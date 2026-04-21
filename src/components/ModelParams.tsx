@@ -149,10 +149,10 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
                       </div>
                       <div className="mt-1 flex gap-3 text-[10px] text-gray-400">
                         <span>
-                          영상입력 포함: ¥{m.pricing.includeVideoInput}/M
+                          With video: ${m.pricing.includeVideoInput}/M tokens
                         </span>
                         <span>
-                          영상입력 미포함: ¥{m.pricing.excludeVideoInput}/M
+                          Without video: ${m.pricing.excludeVideoInput}/M tokens
                         </span>
                       </div>
                     </button>
@@ -220,21 +220,37 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
           <label className="block text-xs font-medium text-gray-500 mb-2">
             Resolution
           </label>
-          <div className="grid grid-cols-2 gap-1 bg-surface-100 rounded-xl p-1">
-            {(["480p", "720p"] as const).map((res) => (
+          <div className="grid grid-cols-3 gap-1 bg-surface-100 rounded-xl p-1">
+            {(["480p", "720p", "1080p"] as const).map((res) => (
               <button
                 key={res}
                 onClick={() => setParams({ resolution: res })}
-                className={`py-2 rounded-lg text-xs font-medium transition-all ${
+                className={`relative py-2 rounded-lg text-xs font-medium transition-all ${
                   params.resolution === res
                     ? "bg-white text-gray-800 shadow-sm"
                     : "text-gray-500 hover:text-gray-700"
                 }`}
               >
                 {res}
+                {res === "1080p" && (
+                  <span className="absolute -top-1 -right-1 bg-amber-400 text-white text-[8px] font-bold px-1 rounded-full">
+                    BETA
+                  </span>
+                )}
               </button>
             ))}
           </div>
+          {params.mode === "first_last_frame" && (
+            <p className="text-[11px] text-blue-600 mt-1.5">
+              ℹ First/Last Frame 모드: 출력 dimension은 (resolution × ratio) 조합으로 결정되며, 입력 이미지가 자동 크롭됩니다. Ratio는 <code className="bg-blue-50 px-1 rounded">Auto</code> 권장 (첫 프레임 비율 채택).
+            </p>
+          )}
+          {params.resolution === "1080p" && (
+            <p className="text-[11px] text-amber-600 mt-1.5">
+              ⚠ 1080p는 공식 문서에 미기재된 실험 옵션입니다. API가 거부하면
+              720p로 전환하세요.
+            </p>
+          )}
         </section>
 
         {/* Video Duration */}
@@ -268,7 +284,7 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
             <div className="flex items-center gap-3">
               <input
                 type="range"
-                min={5}
+                min={4}
                 max={15}
                 step={1}
                 value={params.duration}
@@ -329,33 +345,21 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
               onChange={(v) => setParams({ watermark: v })}
             />
           </div>
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-700">Rendering</span>
-              <Toggle
-                checked={params.rendering}
-                onChange={(v) => setParams({ rendering: v })}
-              />
-            </div>
-            <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">
-              When enabled, generation takes longer. Unlocks layered background
-              modeling, finer denoising, and richer texture rendering.
-            </p>
-          </div>
-        </section>
-
-        <hr className="border-gray-100" />
-
-        {/* Return Last Frame */}
-        <section>
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-700">Return Last Frame</span>
+            <div>
+              <span className="text-sm text-gray-700">Return Last Frame</span>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                Returns the last frame as PNG for chaining consecutive videos.
+              </p>
+            </div>
             <Toggle
               checked={params.returnLastFrame}
               onChange={(v) => setParams({ returnLastFrame: v })}
             />
           </div>
         </section>
+
+        <hr className="border-gray-100" />
 
         {/* Seed */}
         <section>
@@ -399,15 +403,6 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
           </button>
           {advancedOpen && (
             <div className="mt-4 space-y-4">
-              {/* Internet Search */}
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-700">Internet search</span>
-                <Toggle
-                  checked={params.internetSearch}
-                  onChange={(v) => setParams({ internetSearch: v })}
-                />
-              </div>
-
               {/* Generation Timeout */}
               <div>
                 <label className="block text-sm text-gray-700 mb-2">

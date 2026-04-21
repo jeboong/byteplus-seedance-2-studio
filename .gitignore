@@ -28,12 +28,22 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# assets (large binary files)
-assets/
+# assets (large binary files at root only)
+/assets/
 
 # quickstart package
 ark_seedance2.0_quickstart_package/
 ark_seedance2.0_quickstart_package.zip
+modelark_seedance2.0_quickstart_package/
+modelark_seedance2.0_quickstart_package.zip
+
+# BytePlus reference docs (root level)
+/Cancel or delete a video generation task.md
+/Create a video generation task.md
+/List video generation tasks.md
+/Rest API call example.md
+/Retrieve a video generation task.md
+/Seedance 2.0 series tutorial.md
 
 # IDE
 .vscode/

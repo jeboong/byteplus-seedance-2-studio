@@ -9,13 +9,13 @@ export type AspectRatio =
   | "9:16"
   | "21:9";
 
-export type Resolution = "480p" | "720p";
+export type Resolution = "480p" | "720p" | "1080p";
 
 export type DurationType = "seconds" | "smart";
 
 export type ModelId =
-  | "doubao-seedance-2-0-260128"
-  | "doubao-seedance-2-0-fast-260128";
+  | "dreamina-seedance-2-0-260128"
+  | "dreamina-seedance-2-0-fast-260128";
 
 export interface ModelOption {
   id: ModelId;
@@ -29,15 +29,14 @@ export interface ModelOption {
 
 export const MODELS: ModelOption[] = [
   {
-    id: "doubao-seedance-2-0-260128",
-    name: "Doubao-Seedance-2.0",
-    badge: "추천",
+    id: "dreamina-seedance-2-0-260128",
+    name: "Seedance 2.0",
+    badge: "Recommended",
     pricing: { includeVideoInput: 28, excludeVideoInput: 46 },
   },
   {
-    id: "doubao-seedance-2-0-fast-260128",
-    name: "Doubao-Seedance-2.0-fast",
-    badge: "추천",
+    id: "dreamina-seedance-2-0-fast-260128",
+    name: "Seedance 2.0 Fast",
     pricing: { includeVideoInput: 22, excludeVideoInput: 37 },
   },
 ];
@@ -72,15 +71,21 @@ export interface GenerationTask {
   id: string;
   taskId: string;
   prompt: string;
-  status: "pending" | "running" | "succeeded" | "failed";
+  status: "pending" | "queued" | "running" | "succeeded" | "failed" | "cancelled" | "expired";
   videoUrl?: string;
+  lastFrameUrl?: string;
   error?: string;
   params: ModelParams;
   createdAt: number;
+  seed?: number;
+  usage?: { completion_tokens: number; total_tokens: number };
+  actualDuration?: number;
+  actualRatio?: string;
+  actualResolution?: string;
 }
 
 export const DEFAULT_PARAMS: ModelParams = {
-  modelId: "doubao-seedance-2-0-260128",
+  modelId: "dreamina-seedance-2-0-260128",
   mode: "reference",
   ratio: "16:9",
   resolution: "720p",
@@ -123,11 +128,17 @@ export const RATIO_ICONS: Record<AspectRatio, { w: number; h: number }> = {
  */
 const TOKENS_PER_SEC_720P = 21660;
 const TOKENS_PER_SEC_480P = 12000;
+// 1080p ≈ 2.25x pixel area of 720p
+const TOKENS_PER_SEC_1080P = Math.round(TOKENS_PER_SEC_720P * 2.25);
 
 export function estimateTokens(params: ModelParams): number {
   const dur = params.durationType === "seconds" ? params.duration : 10;
   const tps =
-    params.resolution === "720p" ? TOKENS_PER_SEC_720P : TOKENS_PER_SEC_480P;
+    params.resolution === "1080p"
+      ? TOKENS_PER_SEC_1080P
+      : params.resolution === "720p"
+      ? TOKENS_PER_SEC_720P
+      : TOKENS_PER_SEC_480P;
   return Math.round(dur * tps * params.outputCount);
 }
 

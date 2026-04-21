@@ -26,6 +26,8 @@ interface AppState {
   tasks: GenerationTask[];
   addTask: (task: GenerationTask) => void;
   updateTask: (id: string, update: Partial<GenerationTask>) => void;
+  removeTask: (id: string) => void;
+  clearTasks: () => void;
 
   activeTaskId: string | null;
   setActiveTaskId: (id: string | null) => void;
@@ -80,6 +82,18 @@ export const useAppStore = create<AppState>((set) => ({
         localStorage.setItem("sd2_tasks", JSON.stringify(next));
       return { tasks: next };
     }),
+  removeTask: (id) =>
+    set((s) => {
+      const next = s.tasks.filter((t) => t.id !== id);
+      if (typeof window !== "undefined")
+        localStorage.setItem("sd2_tasks", JSON.stringify(next));
+      return { tasks: next };
+    }),
+  clearTasks: () => {
+    if (typeof window !== "undefined")
+      localStorage.removeItem("sd2_tasks");
+    set({ tasks: [] });
+  },
 
   activeTaskId: null,
   setActiveTaskId: (id) => set({ activeTaskId: id }),

@@ -32,6 +32,21 @@ export default function GenerateView() {
   const hasVideoRef = references.some((r) => r.type === "video");
   const cost = estimateCost(params, hasVideoRef);
 
+  const hasFirstFrame = references.some((r) => r.role === "first_frame");
+  const hasLastFrame = references.some((r) => r.role === "last_frame");
+  const isFirstLastMode = params.mode === "first_last_frame";
+  const lastOnlyError = isFirstLastMode && hasLastFrame && !hasFirstFrame;
+  const noFramesError = isFirstLastMode && !hasFirstFrame && !hasLastFrame;
+  const generateDisabled =
+    !prompt.trim() ||
+    lastOnlyError ||
+    noFramesError;
+  const generateDisabledReason = lastOnlyError
+    ? "First frame 이미지를 첨부하세요. (Last frame만으로는 생성 불가)"
+    : noFramesError
+    ? "First frame 이미지를 먼저 첨부하세요."
+    : "";
+
   const pollTask = useCallback(
     (localId: string, taskId: string) => {
       if (!apiKey) return;
@@ -45,6 +60,12 @@ export default function GenerateView() {
             updateTask(localId, {
               status: "succeeded",
               videoUrl: result.content?.video_url,
+              lastFrameUrl: result.content?.last_frame_url,
+              seed: result.seed,
+              usage: result.usage,
+              actualDuration: result.duration,
+              actualRatio: result.ratio,
+              actualResolution: result.resolution,
             });
             if (pollingRef.current[localId]) {
               clearInterval(pollingRef.current[localId]);
@@ -59,8 +80,17 @@ export default function GenerateView() {
               clearInterval(pollingRef.current[localId]);
               delete pollingRef.current[localId];
             }
+          } else if (status === "cancelled" || status === "expired") {
+            updateTask(localId, {
+              status: status as "cancelled" | "expired",
+              error: status === "expired" ? "Task expired" : "Task cancelled",
+            });
+            if (pollingRef.current[localId]) {
+              clearInterval(pollingRef.current[localId]);
+              delete pollingRef.current[localId];
+            }
           } else {
-            updateTask(localId, { status: "running" });
+            updateTask(localId, { status: status === "queued" ? "queued" : "running" });
           }
         } catch (e) {
           const msg = e instanceof Error ? e.message : "Polling error";
@@ -83,7 +113,7 @@ export default function GenerateView() {
   useEffect(() => {
     tasks.forEach((t) => {
       if (
-        (t.status === "pending" || t.status === "running") &&
+        (t.status === "pending" || t.status === "queued" || t.status === "running") &&
         t.taskId &&
         !pollingRef.current[t.id]
       ) {
@@ -178,6 +208,12 @@ export default function GenerateView() {
                   </div>
                 )}
 
+                {generateDisabledReason && (
+                  <div className="mx-4 mb-2 p-2 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-700">
+                    {generateDisabledReason}
+                  </div>
+                )}
+
                 {/* Bottom Bar */}
                 <div className="px-4 pb-3 flex items-center justify-between">
                   <div className="flex items-center gap-1.5 text-[11px] text-gray-500 flex-wrap">
@@ -264,11 +300,12 @@ export default function GenerateView() {
 
                   <div className="flex items-center gap-2 shrink-0 ml-2">
                     <span className="text-[10px] text-gray-400">
-                      ~{(estimateTokens(params) / 1000).toFixed(0)}K tokens · ¥{cost.toFixed(3)}
+                      ~{(estimateTokens(params) / 1000).toFixed(0)}K tokens · ${cost.toFixed(3)}
                     </span>
                     <button
                       onClick={handleGenerate}
-                      disabled={!prompt.trim()}
+                      disabled={generateDisabled}
+                      title={generateDisabledReason || "Generate"}
                       className="p-2 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-200 disabled:text-gray-300 text-white rounded-xl transition-colors"
                     >
                       <Play className="w-4 h-4" />

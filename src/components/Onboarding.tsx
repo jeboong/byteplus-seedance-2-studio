@@ -34,7 +34,7 @@ export default function Onboarding() {
             Seedance 2.0 Studio
           </h1>
           <p className="text-gray-500 text-sm">
-            Volcengine Ark 기반 AI 비디오 생성 플랫폼
+            BytePlus ModelArk 기반 AI 비디오 생성 플랫폼
           </p>
         </div>
 
@@ -45,7 +45,7 @@ export default function Onboarding() {
           </div>
 
           <p className="text-sm text-gray-500 mb-6">
-            Volcengine Ark API Key를 입력하여 Seedance 2.0 비디오 생성 모델에
+            BytePlus Ark API Key를 입력하여 Seedance 2.0 비디오 생성 모델에
             접근하세요. API Key는 브라우저에만 저장되며 외부로 전송되지 않습니다.
           </p>
 
@@ -67,7 +67,7 @@ export default function Onboarding() {
                     setKey(e.target.value);
                     setError("");
                   }}
-                  placeholder="Volcengine Ark API Key 입력"
+                  placeholder="BytePlus Ark API Key 입력"
                   className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
                 />
               </div>
@@ -88,7 +88,10 @@ export default function Onboarding() {
           <div className="mt-6 p-4 bg-surface-50 rounded-xl">
             <p className="text-xs text-gray-400 leading-relaxed">
               <span className="font-medium text-gray-500">지원 모델:</span>{" "}
-              doubao-seedance-2-0-260128
+              Seedance 2.0 (dreamina-seedance-2-0-260128)
+              <br />
+              <span className="font-medium text-gray-500">Fast 모델:</span>{" "}
+              Seedance 2.0 Fast (dreamina-seedance-2-0-fast-260128)
               <br />
               <span className="font-medium text-gray-500">해상도:</span> 480p,
               720p
@@ -96,13 +99,16 @@ export default function Onboarding() {
               <span className="font-medium text-gray-500">비율:</span> 16:9,
               9:16, 4:3, 3:4, 21:9, 1:1, Adaptive
               <br />
-              <span className="font-medium text-gray-500">길이:</span> 5~15초
+              <span className="font-medium text-gray-500">길이:</span> 4~15초
+              <br />
+              <span className="font-medium text-gray-500">기능:</span>{" "}
+              멀티모달 레퍼런스, 비디오 편집, 비디오 확장, 오디오 동기화
             </p>
           </div>
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">
-          Powered by Volcengine Ark &middot; Seedance 2.0
+          Powered by BytePlus ModelArk &middot; Seedance 2.0
         </p>
       </div>
     </div>

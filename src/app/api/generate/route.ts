@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const ARK_BASE = "https://ark.cn-beijing.volces.com/api/v3";
+const ARK_BASE = "https://ark.ap-southeast.bytepluses.com/api/v3";
 const TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
 export const maxDuration = 600; // Vercel/Next.js route timeout (seconds)

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   Download,
   Loader2,
@@ -10,8 +10,15 @@ import {
   RefreshCw,
   LayoutList,
   LayoutGrid,
+  Trash2,
+  Ban,
+  Timer,
+  ImageIcon,
+  Copy,
+  Check,
 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
+import { deleteTask } from "@/lib/api";
 import type { GenerationTask } from "@/lib/types";
 
 type ViewMode = "list" | "grid";
@@ -23,11 +30,21 @@ function TaskCard({
   task: GenerationTask;
   compact?: boolean;
 }) {
+  const { apiKey, removeTask } = useAppStore();
+  const [copied, setCopied] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
   const statusConfig = {
     pending: {
       icon: Clock,
       color: "text-amber-500",
-      bg: "bg-gray-100",
+      bg: "bg-amber-50",
+      label: "Pending",
+    },
+    queued: {
+      icon: Clock,
+      color: "text-amber-500",
+      bg: "bg-amber-50",
       label: "Queued",
     },
     running: {
@@ -48,11 +65,60 @@ function TaskCard({
       bg: "bg-red-50/60",
       label: "Failed",
     },
+    cancelled: {
+      icon: Ban,
+      color: "text-gray-500",
+      bg: "bg-gray-50",
+      label: "Cancelled",
+    },
+    expired: {
+      icon: Timer,
+      color: "text-orange-500",
+      bg: "bg-orange-50",
+      label: "Expired",
+    },
   };
 
-  const cfg = statusConfig[task.status];
+  const cfg = statusConfig[task.status] || statusConfig.failed;
   const Icon = cfg.icon;
   const isFinished = task.status === "succeeded" && task.videoUrl;
+  const canDelete = ["succeeded", "failed", "cancelled", "expired"].includes(task.status);
+  const canCancel = task.status === "queued";
+
+  const handleDelete = useCallback(async () => {
+    if (!apiKey || !task.taskId) {
+      removeTask(task.id);
+      return;
+    }
+    setDeleting(true);
+    try {
+      await deleteTask(apiKey, task.taskId);
+    } catch {
+      // Even if API delete fails, remove from local state
+    }
+    removeTask(task.id);
+    setDeleting(false);
+  }, [apiKey, task.taskId, task.id, removeTask]);
+
+  const handleCancel = useCallback(async () => {
+    if (!apiKey || !task.taskId) return;
+    setDeleting(true);
+    try {
+      await deleteTask(apiKey, task.taskId);
+      useAppStore.getState().updateTask(task.id, { status: "cancelled" });
+    } catch {
+      // Ignore
+    }
+    setDeleting(false);
+  }, [apiKey, task.taskId, task.id]);
+
+  const copySeed = () => {
+    if (task.seed !== undefined) {
+      navigator.clipboard.writeText(String(task.seed));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  };
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm h-full flex flex-col">
@@ -96,14 +162,14 @@ function TaskCard({
             </div>
           )}
           {task.error && (
-            <p className="text-xs text-red-500 max-w-xs text-center mt-1">
+            <p className="text-xs text-red-500 max-w-xs text-center mt-1 px-4">
               {task.error}
             </p>
           )}
         </div>
       )}
 
-      <div className={`${compact ? "px-3 py-2" : "px-4 py-3"}`}>
+      <div className={`${compact ? "px-3 py-2" : "px-4 py-3"} flex-1`}>
         <p
           className={`text-gray-600 leading-relaxed ${
             compact ? "text-[11px] line-clamp-1" : "text-xs line-clamp-2"
@@ -118,19 +184,44 @@ function TaskCard({
           } flex items-center justify-between`}
         >
           <div
-            className={`flex items-center gap-1.5 ${
+            className={`flex items-center gap-1.5 flex-wrap ${
               compact ? "text-[9px]" : "text-[10px]"
             } text-gray-400`}
           >
-            <span>{task.params.resolution}</span>
+            <span>{task.actualResolution || task.params.resolution}</span>
             <span>·</span>
-            <span>{task.params.ratio}</span>
+            <span>{task.actualRatio || task.params.ratio}</span>
             <span>·</span>
             <span>
-              {task.params.durationType === "seconds"
+              {task.actualDuration
+                ? `${task.actualDuration}s`
+                : task.params.durationType === "seconds"
                 ? `${task.params.duration}s`
                 : "auto"}
             </span>
+            {task.seed !== undefined && !compact && (
+              <>
+                <span>·</span>
+                <button
+                  onClick={copySeed}
+                  className="inline-flex items-center gap-0.5 hover:text-gray-600 transition-colors"
+                  title="Copy seed"
+                >
+                  seed:{task.seed}
+                  {copied ? (
+                    <Check className="w-2.5 h-2.5 text-green-500" />
+                  ) : (
+                    <Copy className="w-2.5 h-2.5" />
+                  )}
+                </button>
+              </>
+            )}
+            {task.usage && !compact && (
+              <>
+                <span>·</span>
+                <span>{(task.usage.total_tokens / 1000).toFixed(1)}K tokens</span>
+              </>
+            )}
             {!compact && (
               <>
                 <span>·</span>
@@ -139,22 +230,70 @@ function TaskCard({
             )}
           </div>
 
-          {isFinished && (
-            <a
-              href={task.videoUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              download
-              className={`inline-flex items-center gap-1 bg-primary-500 text-white rounded-lg font-medium hover:bg-primary-600 transition-colors ${
-                compact
-                  ? "px-2 py-0.5 text-[10px]"
-                  : "px-2.5 py-1 text-[11px]"
-              }`}
-            >
-              <Download className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
-              {compact ? "DL" : "Download"}
-            </a>
-          )}
+          <div className="flex items-center gap-1.5 shrink-0 ml-2">
+            {isFinished && task.lastFrameUrl && (
+              <a
+                href={task.lastFrameUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`inline-flex items-center gap-0.5 border border-gray-200 text-gray-500 rounded-lg font-medium hover:bg-gray-50 transition-colors ${
+                  compact
+                    ? "px-1.5 py-0.5 text-[9px]"
+                    : "px-2 py-0.5 text-[10px]"
+                }`}
+                title="Last frame"
+              >
+                <ImageIcon className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
+              </a>
+            )}
+            {isFinished && (
+              <a
+                href={task.videoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                download
+                className={`inline-flex items-center gap-1 bg-primary-500 text-white rounded-lg font-medium hover:bg-primary-600 transition-colors ${
+                  compact
+                    ? "px-2 py-0.5 text-[10px]"
+                    : "px-2.5 py-1 text-[11px]"
+                }`}
+              >
+                <Download className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
+                {compact ? "DL" : "Download"}
+              </a>
+            )}
+            {canCancel && (
+              <button
+                onClick={handleCancel}
+                disabled={deleting}
+                className={`inline-flex items-center gap-1 border border-orange-200 text-orange-500 rounded-lg font-medium hover:bg-orange-50 transition-colors ${
+                  compact
+                    ? "px-1.5 py-0.5 text-[9px]"
+                    : "px-2 py-0.5 text-[10px]"
+                }`}
+                title="Cancel task"
+              >
+                <Ban className="w-3 h-3" />
+                {!compact && "Cancel"}
+              </button>
+            )}
+            {canDelete && (
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className={`inline-flex items-center gap-0.5 text-gray-400 hover:text-red-500 transition-colors ${
+                  compact ? "p-0.5" : "p-1"
+                }`}
+                title="Delete task"
+              >
+                {deleting ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Trash2 className="w-3 h-3" />
+                )}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -195,7 +334,7 @@ function ViewToggle({
 }
 
 export default function VideoResult() {
-  const { tasks } = useAppStore();
+  const { tasks, clearTasks } = useAppStore();
   const [viewMode, setViewMode] = useState<ViewMode>("list");
 
   if (tasks.length === 0) {
@@ -216,8 +355,19 @@ export default function VideoResult() {
 
   return (
     <div>
-      <div className="flex justify-end mb-3">
-        <ViewToggle mode={viewMode} onChange={setViewMode} />
+      <div className="flex justify-between items-center mb-3">
+        <span className="text-xs text-gray-400">{tasks.length} tasks</span>
+        <div className="flex items-center gap-2">
+          {tasks.length > 0 && (
+            <button
+              onClick={clearTasks}
+              className="text-[10px] text-gray-400 hover:text-red-500 transition-colors px-2 py-1 rounded-lg hover:bg-red-50"
+            >
+              Clear all
+            </button>
+          )}
+          <ViewToggle mode={viewMode} onChange={setViewMode} />
+        </div>
       </div>
 
       {viewMode === "list" ? (

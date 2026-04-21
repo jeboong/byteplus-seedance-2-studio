@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Seedance 2.0 Studio",
-  description: "AI Video Generation powered by Volcengine Ark Seedance 2.0",
+  description: "AI Video Generation powered by BytePlus ModelArk Seedance 2.0",
 };
 
 export default function RootLayout({
