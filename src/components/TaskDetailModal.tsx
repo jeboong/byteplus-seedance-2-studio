@@ -19,6 +19,7 @@ import {
 import { useAppStore } from "@/lib/store";
 import { deleteTask } from "@/lib/api";
 import { getRefTags } from "@/lib/refTags";
+import { downloadCrossOrigin, isUrlExpired } from "@/lib/downloadVideo";
 import type { GenerationTask, ReferenceAsset } from "@/lib/types";
 
 function ThumbInline({
@@ -84,6 +85,9 @@ export default function TaskDetailModal({
   const [copiedSeed, setCopiedSeed] = useState(false);
   const [reused, setReused] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  const expired = isUrlExpired(task.createdAt);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -94,7 +98,17 @@ export default function TaskDetailModal({
   }, [onClose]);
 
   const tags = task.references ? getRefTags(task.references) : {};
-  const isFinished = task.status === "succeeded" && task.videoUrl;
+  const isFinished = task.status === "succeeded" && task.videoUrl && !expired;
+
+  const handleDownload = useCallback(async () => {
+    if (!task.videoUrl || downloading) return;
+    setDownloading(true);
+    await downloadCrossOrigin(
+      task.videoUrl,
+      `seedance-${task.taskId || task.id}.mp4`
+    );
+    setDownloading(false);
+  }, [task.videoUrl, task.taskId, task.id, downloading]);
   const canDelete = ["succeeded", "failed", "cancelled", "expired"].includes(
     task.status
   );
@@ -168,6 +182,7 @@ export default function TaskDetailModal({
               controls
               autoPlay
               loop
+              preload="metadata"
               className="w-full max-h-[90vh] object-contain"
             />
           ) : (
@@ -177,7 +192,14 @@ export default function TaskDetailModal({
                   task.status === "running" ? "animate-spin" : ""
                 }`}
               />
-              <span className="capitalize">{task.status}</span>
+              <span className="capitalize">
+                {expired && task.status === "succeeded" ? "expired" : task.status}
+              </span>
+              {expired && task.status === "succeeded" && (
+                <p className="text-orange-300 text-xs max-w-xs text-center">
+                  비디오 URL이 만료되었습니다 (24시간 한정).
+                </p>
+              )}
               {task.error && (
                 <p className="text-red-300 text-xs max-w-xs text-center">
                   {task.error}
@@ -373,16 +395,19 @@ export default function TaskDetailModal({
             </div>
 
             {isFinished && (
-              <a
-                href={task.videoUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                download
-                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-xs font-medium bg-primary-500 hover:bg-primary-600 text-white transition-colors"
+              <button
+                onClick={handleDownload}
+                disabled={downloading}
+                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-xs font-medium bg-primary-500 hover:bg-primary-600 text-white transition-colors disabled:opacity-60"
+                title="한 번만 fetch하고 즉시 메모리 해제"
               >
-                <Download className="w-3.5 h-3.5" />
-                Download Video
-              </a>
+                {downloading ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Download className="w-3.5 h-3.5" />
+                )}
+                {downloading ? "Saving..." : "Download Video"}
+              </button>
             )}
 
             {canDelete && (

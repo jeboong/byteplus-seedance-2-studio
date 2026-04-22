@@ -12,11 +12,38 @@ const PERSIST_DEBOUNCE_MS = 800;
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
+/**
+ * Strip base64 payloads from a task before writing to IndexedDB.
+ * Keeps lightweight metadata (id, name, type, role) so reuse UI can
+ * still show "[image attachment]" placeholders and asset:// IDs survive.
+ *
+ * Why: keeping data: URIs in persistent storage causes 30–50MB of state
+ * to be pulled into memory on every hydrate, which makes the page feel
+ * sluggish (jank on scroll, slow initial render).
+ */
+function slimTaskForPersist(task: GenerationTask): GenerationTask {
+  if (!task.references || task.references.length === 0) return task;
+  const refs = task.references.map((r) => {
+    const isHeavy =
+      typeof r.url === "string" && r.url.startsWith("data:");
+    const previewIsHeavy =
+      typeof r.preview === "string" && r.preview.startsWith("data:");
+    if (!isHeavy && !previewIsHeavy) return r;
+    return {
+      ...r,
+      url: isHeavy ? "" : r.url,
+      preview: previewIsHeavy ? undefined : r.preview,
+    };
+  });
+  return { ...task, references: refs };
+}
+
 function persistTasks(tasks: GenerationTask[]) {
   if (typeof window === "undefined") return;
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
-    idbSet(TASKS_KEY, tasks).catch((err) => {
+    const slim = tasks.map(slimTaskForPersist);
+    idbSet(TASKS_KEY, slim).catch((err) => {
       console.error("[store] IndexedDB persist failed:", err);
     });
   }, PERSIST_DEBOUNCE_MS);

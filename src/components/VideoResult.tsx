@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Download,
   Loader2,
@@ -26,6 +26,7 @@ import {
 import { useAppStore } from "@/lib/store";
 import { deleteTask } from "@/lib/api";
 import { getRefTags } from "@/lib/refTags";
+import { downloadCrossOrigin, isUrlExpired } from "@/lib/downloadVideo";
 import type { GenerationTask, ReferenceAsset } from "@/lib/types";
 import TaskDetailModal from "./TaskDetailModal";
 
@@ -83,9 +84,16 @@ function ReferenceThumb({
 }
 
 /**
- * Hover-to-play video. No autoplay on mount, plays only while the user hovers
- * over (or focuses) the element. Pausing keeps the current playhead so the
- * next hover resumes from where it left off.
+ * Hover-to-play video with lazy network activity.
+ *
+ * 핵심 최적화:
+ * 1. preload="none"  → 마운트 시점에 어떤 네트워크 요청도 일으키지 않음.
+ * 2. IntersectionObserver → 뷰포트 안에 들어와야만 video 엘리먼트에 src 부여.
+ *    뷰포트 밖이면 src를 떼서 브라우저가 버퍼/메타데이터를 해제하게 함.
+ * 3. 호버 진입 시점에 비로소 metadata + 재생을 시작.
+ *
+ * 결과: 카드 100개가 있어도 동시에 100개의 네트워크 요청이 발생하지 않고,
+ *      현재 보이는 카드 + 호버한 카드만 데이터를 받는다.
  */
 function HoverVideo({
   src,
@@ -94,36 +102,66 @@ function HoverVideo({
   src: string;
   className?: string;
 }) {
-  const ref = useRef<HTMLVideoElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      setInView(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) setInView(e.isIntersecting);
+      },
+      { rootMargin: "200px 0px", threshold: 0.01 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   const play = useCallback(() => {
-    const v = ref.current;
+    const v = videoRef.current;
     if (!v) return;
+    if (v.preload !== "auto") v.preload = "metadata";
     const p = v.play();
     if (p && typeof p.catch === "function") p.catch(() => {});
   }, []);
 
   const pause = useCallback(() => {
-    const v = ref.current;
+    const v = videoRef.current;
     if (!v) return;
     v.pause();
   }, []);
 
   return (
-    <video
-      ref={ref}
-      src={src}
-      muted
-      loop
-      playsInline
-      preload="metadata"
-      controls
-      className={className}
-      onMouseEnter={play}
-      onMouseLeave={pause}
-      onFocus={play}
-      onBlur={pause}
-    />
+    <div ref={wrapRef} className="contents">
+      {inView ? (
+        <video
+          ref={videoRef}
+          src={src}
+          muted
+          loop
+          playsInline
+          preload="none"
+          controls
+          className={className}
+          onMouseEnter={play}
+          onMouseLeave={pause}
+          onFocus={play}
+          onBlur={pause}
+        />
+      ) : (
+        <div
+          className={`${className ?? ""} bg-black/40 dark:bg-black/60 flex items-center justify-center`}
+          aria-label="video placeholder"
+        >
+          <Film className="w-6 h-6 text-white/30" />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -141,6 +179,21 @@ function TaskCard({
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [reused, setReused] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  const expired = isUrlExpired(task.createdAt);
+
+  const handleDownload = useCallback(
+    async (e: React.MouseEvent<HTMLButtonElement>) => {
+      e.preventDefault();
+      if (!task.videoUrl || downloading) return;
+      setDownloading(true);
+      const fname = `seedance-${task.taskId || task.id}.mp4`;
+      await downloadCrossOrigin(task.videoUrl, fname);
+      setDownloading(false);
+    },
+    [task.videoUrl, task.taskId, task.id, downloading]
+  );
 
   const handleReuse = useCallback(() => {
     loadFromTask(task);
@@ -206,9 +259,11 @@ function TaskCard({
     },
   };
 
-  const cfg = statusConfig[task.status] || statusConfig.failed;
+  const effectiveStatus =
+    task.status === "succeeded" && expired ? "expired" : task.status;
+  const cfg = statusConfig[effectiveStatus] || statusConfig.failed;
   const Icon = cfg.icon;
-  const isFinished = task.status === "succeeded" && task.videoUrl;
+  const isFinished = task.status === "succeeded" && task.videoUrl && !expired;
   const canDelete = ["succeeded", "failed", "cancelled", "expired"].includes(
     task.status
   );
@@ -293,6 +348,11 @@ function TaskCard({
           {task.error && (
             <p className="text-xs text-red-500 max-w-xs text-center mt-1 px-4">
               {task.error}
+            </p>
+          )}
+          {effectiveStatus === "expired" && task.status === "succeeded" && (
+            <p className="text-[10px] text-orange-500/80 max-w-xs text-center mt-1 px-4">
+              비디오 URL이 만료되었습니다 (24시간). 새로 생성해 주세요.
             </p>
           )}
         </div>
@@ -437,20 +497,31 @@ function TaskCard({
               </a>
             )}
             {isFinished && (
-              <a
-                href={task.videoUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                download
-                className={`inline-flex items-center gap-1 bg-primary-500 text-white rounded-lg font-medium hover:bg-primary-600 transition-colors ${
+              <button
+                onClick={handleDownload}
+                disabled={downloading}
+                className={`inline-flex items-center gap-1 bg-primary-500 text-white rounded-lg font-medium hover:bg-primary-600 transition-colors disabled:opacity-60 ${
                   compact
                     ? "px-2 py-0.5 text-[10px]"
                     : "px-2.5 py-1 text-[11px]"
                 }`}
+                title="비디오 다운로드 (한 번만 fetch, 즉시 메모리 해제)"
               >
-                <Download className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
-                {compact ? "DL" : "Download"}
-              </a>
+                {downloading ? (
+                  <Loader2
+                    className={`${compact ? "w-2.5 h-2.5" : "w-3 h-3"} animate-spin`}
+                  />
+                ) : (
+                  <Download className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
+                )}
+                {compact
+                  ? downloading
+                    ? "..."
+                    : "DL"
+                  : downloading
+                  ? "Saving"
+                  : "Download"}
+              </button>
             )}
             {canCancel && (
               <button
