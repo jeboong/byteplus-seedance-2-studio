@@ -36,6 +36,7 @@ interface AppState {
 
   references: ReferenceAsset[];
   addReference: (ref: ReferenceAsset) => void;
+  updateReference: (id: string, update: Partial<ReferenceAsset>) => void;
   removeReference: (id: string) => void;
   clearReferences: () => void;
 
@@ -78,6 +79,12 @@ export const useAppStore = create<AppState>((set) => ({
   references: [],
   addReference: (ref) =>
     set((s) => ({ references: [...s.references, ref] })),
+  updateReference: (id, update) =>
+    set((s) => ({
+      references: s.references.map((r) =>
+        r.id === id ? { ...r, ...update } : r
+      ),
+    })),
   removeReference: (id) =>
     set((s) => ({ references: s.references.filter((r) => r.id !== id) })),
   clearReferences: () => set({ references: [] }),

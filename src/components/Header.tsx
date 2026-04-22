@@ -3,6 +3,7 @@
 import { Video, Settings, LogOut, ChevronDown } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { MODELS } from "@/lib/types";
+import ThemeToggle from "./ThemeToggle";
 
 export default function Header({
   onToggleParams,
@@ -59,6 +60,7 @@ export default function Header({
         >
           <Settings className="w-4 h-4" />
         </button>
+        <ThemeToggle />
         <button
           onClick={clearApiKey}
           className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"

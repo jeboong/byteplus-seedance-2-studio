@@ -1,12 +1,18 @@
 import type { ModelParams, ReferenceAsset } from "./types";
+import { expandPromptTags } from "./refTags";
 
 export function buildPayload(
   prompt: string,
   references: ReferenceAsset[],
   params: ModelParams
 ) {
+  // BytePlus recommends "[Image 1]xxx, [Image 2]xxx" natural-language refs.
+  // We let users author with friendly @img1 / @vid1 / @aud1 tags in the UI
+  // and expand them here just before sending the request.
+  const expandedPrompt = expandPromptTags(prompt);
+
   const content: Record<string, unknown>[] = [
-    { type: "text", text: prompt },
+    { type: "text", text: expandedPrompt },
   ];
 
   for (const ref of references) {

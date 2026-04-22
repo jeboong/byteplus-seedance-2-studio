@@ -5,12 +5,16 @@ import {
   Play,
   Settings2,
   ChevronDown,
+  ImagePlus,
 } from "lucide-react";
 import { useAppStore, hydrateTasks } from "@/lib/store";
 import { createGenerationTask, getTaskStatus } from "@/lib/api";
 import { estimateCost, estimateTokens } from "@/lib/types";
+import { useFileUpload } from "@/lib/useFileUpload";
+import { PromptInsertProvider } from "@/lib/usePromptInsert";
 import Header from "./Header";
 import ModelParams from "./ModelParams";
+import PromptEditor, { type PromptEditorHandle } from "./PromptEditor";
 import ReferenceUpload from "./ReferenceUpload";
 import VideoResult from "./VideoResult";
 
@@ -27,7 +31,82 @@ export default function GenerateView() {
   const [error, setError] = useState("");
   const [paramsOpen, setParamsOpen] = useState(true);
   const [modeDropdown, setModeDropdown] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const pollingRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const promptEditorRef = useRef<PromptEditorHandle>(null);
+  const dragCounter = useRef(0);
+
+  // Collapse the input card by default; expand on hover, focus, drag-in,
+  // when the user already has attached references, or when the textarea
+  // already has content.
+  const isExpanded =
+    isHovered ||
+    isFocused ||
+    isDragOver ||
+    references.length > 0 ||
+    prompt.length > 0;
+
+  const { upload: uploadFiles, error: dropError, clearError: clearDropError } =
+    useFileUpload();
+
+  const insertAtCursor = useCallback((text: string) => {
+    if (promptEditorRef.current) {
+      promptEditorRef.current.insertAtCursor(text);
+    } else {
+      const current = useAppStore.getState().prompt;
+      useAppStore.getState().setPrompt(current + text);
+    }
+  }, []);
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    dragCounter.current += 1;
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    dragCounter.current -= 1;
+    if (dragCounter.current <= 0) {
+      dragCounter.current = 0;
+      setIsDragOver(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      if (!e.dataTransfer.types.includes("Files")) return;
+      e.preventDefault();
+      dragCounter.current = 0;
+      setIsDragOver(false);
+      const files = e.dataTransfer.files;
+      if (files?.length) {
+        uploadFiles(files);
+      }
+    },
+    [uploadFiles]
+  );
+
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent) => {
+      const files = e.clipboardData?.files;
+      if (files && files.length > 0) {
+        e.preventDefault();
+        uploadFiles(files);
+      }
+    },
+    [uploadFiles]
+  );
 
   const hasVideoRef = references.some((r) => r.type === "video");
   const cost = estimateCost(params, hasVideoRef);
@@ -183,32 +262,80 @@ export default function GenerateView() {
           </div>
 
           {/* Floating Input Area */}
+          <PromptInsertProvider insert={insertAtCursor}>
           <div className="absolute bottom-0 left-0 right-0 flex justify-center pb-5 px-6 pointer-events-none">
             <div className="w-full max-w-2xl pointer-events-auto">
-              <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/60 border border-gray-100 overflow-hidden">
-                {/* Reference Upload */}
-                <div className="px-4 pt-3">
+              <div
+                className={`relative bg-white rounded-2xl shadow-xl shadow-gray-200/60 border overflow-hidden transition-all duration-200 ${
+                  isDragOver
+                    ? "border-primary-400 ring-2 ring-primary-200"
+                    : "border-gray-100"
+                }`}
+                onMouseEnter={() => setIsHovered(true)}
+                onMouseLeave={() => setIsHovered(false)}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+              >
+                {isDragOver && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-primary-50/95 pointer-events-none rounded-2xl border-2 border-dashed border-primary-400">
+                    <ImagePlus className="w-7 h-7 text-primary-500 mb-1" />
+                    <p className="text-sm font-medium text-primary-600">
+                      여기에 파일을 놓아 첨부
+                    </p>
+                    <p className="text-[10px] text-primary-500 mt-0.5">
+                      이미지 / 비디오 / 오디오 (다중 파일 지원)
+                    </p>
+                  </div>
+                )}
+
+                {/* Reference Upload — animated collapse */}
+                <div
+                  className={`overflow-hidden transition-all duration-200 ease-out ${
+                    isExpanded
+                      ? "max-h-72 opacity-100 px-4 pt-3"
+                      : "max-h-0 opacity-0 px-4 pt-0"
+                  }`}
+                >
                   <ReferenceUpload />
                 </div>
 
                 {/* Prompt Input */}
                 <div className="px-4 py-2">
-                  <textarea
+                  <PromptEditor
+                    ref={promptEditorRef}
                     value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
+                    onChange={setPrompt}
+                    onPaste={handlePaste}
+                    onFocus={() => setIsFocused(true)}
+                    onBlur={() => setIsFocused(false)}
+                    rows={isExpanded ? 2 : 1}
                     placeholder={
-                      params.mode === "first_last_frame"
-                        ? "Describe the motion you want between the first and last frames..."
-                        : "Human faces are not supported in reference mode. Describe your video..."
+                      isExpanded
+                        ? params.mode === "first_last_frame"
+                          ? "Describe the motion you want between the first and last frames..."
+                          : "프롬프트를 입력하세요. @를 입력하면 첨부 자산 자동완성이 뜹니다 (Tab/Enter 선택). @img1·@vid1·@aud1 등은 자동으로 칩으로 표시됩니다."
+                        : "프롬프트 입력 / @로 첨부 태그 / 마우스 올리면 첨부 패널 열기..."
                     }
-                    rows={2}
-                    className="w-full px-3 py-2 bg-surface-50 border border-gray-200 rounded-xl text-sm leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent placeholder:text-gray-400 transition-all"
                   />
                 </div>
 
                 {error && (
                   <div className="mx-4 mb-2 p-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600">
                     {error}
+                  </div>
+                )}
+
+                {dropError && (
+                  <div className="mx-4 mb-2 p-2 bg-orange-50 border border-orange-200 rounded-lg text-[11px] text-orange-700 flex items-start gap-1.5">
+                    <span className="flex-1">{dropError}</span>
+                    <button
+                      onClick={clearDropError}
+                      className="text-orange-400 hover:text-orange-600 shrink-0"
+                    >
+                      ✕
+                    </button>
                   </div>
                 )}
 
@@ -319,6 +446,7 @@ export default function GenerateView() {
               </div>
             </div>
           </div>
+          </PromptInsertProvider>
         </div>
 
         {/* Params Panel */}

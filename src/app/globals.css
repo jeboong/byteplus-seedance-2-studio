@@ -66,3 +66,166 @@ input[type="range"]::-moz-range-thumb {
   background: #d1d5db;
   border-radius: 2px;
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * DARK MODE — Linear / Vercel-inspired neutral palette
+ *
+ * Design tokens (warm-neutral, NOT slate/blue):
+ *   Base background:   #0a0a0a   (page)
+ *   Elevated surface:  #141414   (cards, inputs)
+ *   Raised surface:    #1c1c1c   (hover, secondary)
+ *   Hairline border:   #262626
+ *   Strong border:     #2e2e2e
+ *
+ * Text ladder (avoid pure white):
+ *   Primary:   #ededed
+ *   Secondary: #a3a3a3
+ *   Muted:     #737373
+ *   Disabled:  #525252
+ *
+ * Hierarchy comes from BORDERS and small surface deltas, not shadows
+ * (shadows are nearly invisible on dark backgrounds).
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+html {
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+html.dark {
+  color-scheme: dark;
+  background-color: #0a0a0a;
+  color: #ededed;
+}
+
+html.dark body {
+  background-color: #0a0a0a;
+  color: #ededed;
+}
+
+@layer utilities {
+  /* ───── Backgrounds ─────
+   * bg-white        → cards / inputs (elevated)
+   * bg-surface-50,
+   * bg-gray-50      → page background (base)
+   * bg-gray-100/200 → raised hover states
+   */
+  html.dark .bg-white                 { background-color: #141414 !important; }
+  html.dark .bg-surface-50            { background-color: #0a0a0a !important; }
+  html.dark .bg-surface-100           { background-color: #141414 !important; }
+  html.dark .bg-gray-50               { background-color: #141414 !important; }
+  html.dark .bg-gray-100              { background-color: #1c1c1c !important; }
+  html.dark .bg-gray-200              { background-color: #262626 !important; }
+
+  html.dark .bg-gray-50\/50           { background-color: rgb(20 20 20 / 0.5) !important; }
+  html.dark .bg-gray-50\/60           { background-color: rgb(20 20 20 / 0.6) !important; }
+  html.dark .bg-white\/80             { background-color: rgb(20 20 20 / 0.8) !important; }
+  html.dark .bg-white\/90             { background-color: rgb(20 20 20 / 0.9) !important; }
+
+  html.dark .hover\:bg-white:hover    { background-color: #1c1c1c !important; }
+  html.dark .hover\:bg-gray-50:hover  { background-color: #1c1c1c !important; }
+  html.dark .hover\:bg-gray-100:hover { background-color: #262626 !important; }
+  html.dark .hover\:bg-gray-200:hover { background-color: #2e2e2e !important; }
+
+  /* Primary accent tints — desaturated low-luminance violet */
+  html.dark .bg-primary-50            { background-color: rgb(124 58 237 / 0.16) !important; }
+  html.dark .bg-primary-100           { background-color: rgb(124 58 237 / 0.24) !important; }
+  html.dark .hover\:bg-primary-50:hover  { background-color: rgb(124 58 237 / 0.22) !important; }
+  html.dark .hover\:bg-primary-100:hover { background-color: rgb(124 58 237 / 0.32) !important; }
+
+  /* Status tints */
+  html.dark .bg-orange-50             { background-color: rgb(234 88 12 / 0.15) !important; }
+  html.dark .bg-amber-50              { background-color: rgb(245 158 11 / 0.13) !important; }
+  html.dark .bg-amber-100             { background-color: rgb(245 158 11 / 0.22) !important; }
+  html.dark .bg-red-50                { background-color: rgb(239 68 68 / 0.13) !important; }
+  html.dark .bg-red-100               { background-color: rgb(239 68 68 / 0.20) !important; }
+  html.dark .bg-green-50              { background-color: rgb(34 197 94 / 0.13) !important; }
+  html.dark .bg-green-100             { background-color: rgb(34 197 94 / 0.20) !important; }
+  html.dark .bg-blue-50               { background-color: rgb(59 130 246 / 0.13) !important; }
+
+  /* ───── Text ladder ───── */
+  html.dark .text-black               { color: #ededed !important; }
+  html.dark .text-gray-300            { color: #a3a3a3 !important; }
+  html.dark .text-gray-400            { color: #a3a3a3 !important; }
+  html.dark .text-gray-500            { color: #b4b4b4 !important; }
+  html.dark .text-gray-600            { color: #d4d4d4 !important; }
+  html.dark .text-gray-700            { color: #e5e5e5 !important; }
+  html.dark .text-gray-800            { color: #ededed !important; }
+  html.dark .text-gray-900            { color: #f5f5f5 !important; }
+
+  html.dark .hover\:text-gray-600:hover { color: #d4d4d4 !important; }
+  html.dark .hover\:text-gray-700:hover { color: #ededed !important; }
+  html.dark .hover\:text-gray-800:hover { color: #f5f5f5 !important; }
+  html.dark .hover\:text-gray-900:hover { color: #fafafa !important; }
+
+  /* Status text — keep tinted but more vibrant for contrast on dark */
+  html.dark .text-amber-600,
+  html.dark .text-amber-700           { color: #fbbf24 !important; }
+  html.dark .text-orange-600,
+  html.dark .text-orange-700          { color: #fb923c !important; }
+  html.dark .text-red-600,
+  html.dark .text-red-700             { color: #f87171 !important; }
+  html.dark .text-green-600,
+  html.dark .text-green-700           { color: #4ade80 !important; }
+  html.dark .text-primary-600,
+  html.dark .text-primary-700         { color: #a78bfa !important; }
+
+  /* Placeholder text */
+  html.dark .placeholder\:text-gray-400::placeholder { color: #525252 !important; }
+  html.dark .placeholder\:text-gray-500::placeholder { color: #525252 !important; }
+
+  /* ───── Borders (the main hierarchy device on dark) ───── */
+  html.dark .border-gray-100          { border-color: #262626 !important; }
+  html.dark .border-gray-200          { border-color: #2e2e2e !important; }
+  html.dark .border-gray-300          { border-color: #404040 !important; }
+  html.dark .border-white             { border-color: #141414 !important; }
+
+  html.dark .divide-gray-100 > * + *  { border-color: #262626 !important; }
+  html.dark .divide-gray-200 > * + *  { border-color: #2e2e2e !important; }
+
+  html.dark .ring-gray-200            { --tw-ring-color: #2e2e2e !important; }
+  html.dark .ring-primary-200         { --tw-ring-color: rgb(167 139 250 / 0.35) !important; }
+
+  /* Shadows — minimal, just darken */
+  html.dark .shadow-sm,
+  html.dark .shadow,
+  html.dark .shadow-md,
+  html.dark .shadow-lg,
+  html.dark .shadow-xl,
+  html.dark .shadow-2xl {
+    --tw-shadow-color: rgb(0 0 0 / 0.5);
+    --tw-shadow: var(--tw-shadow-colored);
+  }
+}
+
+/* Form controls in dark */
+html.dark input[type="range"] {
+  background: #2e2e2e;
+}
+html.dark input[type="range"]::-webkit-slider-thumb,
+html.dark input[type="range"]::-moz-range-thumb {
+  border-color: #141414;
+}
+
+html.dark .scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #404040;
+}
+html.dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #525252;
+}
+
+html.dark select,
+html.dark input,
+html.dark textarea {
+  color-scheme: dark;
+}
+
+/* PromptEditor textarea has transparent text (overlay paints the real text);
+ * only the caret needs to be visible. */
+.prompt-editor-textarea {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  caret-color: rgb(31 41 55);
+}
+html.dark .prompt-editor-textarea {
+  caret-color: #ededed;
+}

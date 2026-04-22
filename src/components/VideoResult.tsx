@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, useLayoutEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   Download,
   Loader2,
@@ -17,8 +17,7 @@ import {
   Copy,
   Check,
   RotateCcw,
-  ChevronDown,
-  ChevronUp,
+  Maximize2,
   Paperclip,
   Film,
   Music,
@@ -26,11 +25,19 @@ import {
 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { deleteTask } from "@/lib/api";
+import { getRefTags } from "@/lib/refTags";
 import type { GenerationTask, ReferenceAsset } from "@/lib/types";
+import TaskDetailModal from "./TaskDetailModal";
 
 type ViewMode = "list" | "grid";
 
-function ReferenceThumb({ asset }: { asset: ReferenceAsset }) {
+function ReferenceThumb({
+  asset,
+  tag,
+}: {
+  asset: ReferenceAsset;
+  tag?: string;
+}) {
   const isAsset = asset.url?.startsWith("asset://") ?? false;
   const isImage = asset.type === "image";
   const roleLabel =
@@ -43,7 +50,7 @@ function ReferenceThumb({ asset }: { asset: ReferenceAsset }) {
   return (
     <div
       className="relative w-8 h-8 rounded-md overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center shrink-0"
-      title={`${asset.name} (${asset.role || asset.type})`}
+      title={`${tag ? `${tag} · ` : ""}${asset.name} (${asset.role || asset.type})`}
     >
       {isImage && asset.preview && !isAsset ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -61,6 +68,11 @@ function ReferenceThumb({ asset }: { asset: ReferenceAsset }) {
       ) : (
         <ImageIcon className="w-3.5 h-3.5 text-gray-400" />
       )}
+      {tag && (
+        <span className="absolute top-0 left-0 bg-primary-500/90 text-white text-[7px] font-bold px-0.5 leading-tight rounded-br">
+          {tag.replace("@", "")}
+        </span>
+      )}
       {roleLabel && (
         <span className="absolute bottom-0 right-0 bg-primary-500 text-white text-[7px] font-bold px-1 leading-tight rounded-tl">
           {roleLabel}
@@ -70,32 +82,65 @@ function ReferenceThumb({ asset }: { asset: ReferenceAsset }) {
   );
 }
 
+/**
+ * Hover-to-play video. No autoplay on mount, plays only while the user hovers
+ * over (or focuses) the element. Pausing keeps the current playhead so the
+ * next hover resumes from where it left off.
+ */
+function HoverVideo({
+  src,
+  className,
+}: {
+  src: string;
+  className?: string;
+}) {
+  const ref = useRef<HTMLVideoElement>(null);
+
+  const play = useCallback(() => {
+    const v = ref.current;
+    if (!v) return;
+    const p = v.play();
+    if (p && typeof p.catch === "function") p.catch(() => {});
+  }, []);
+
+  const pause = useCallback(() => {
+    const v = ref.current;
+    if (!v) return;
+    v.pause();
+  }, []);
+
+  return (
+    <video
+      ref={ref}
+      src={src}
+      muted
+      loop
+      playsInline
+      preload="metadata"
+      controls
+      className={className}
+      onMouseEnter={play}
+      onMouseLeave={pause}
+      onFocus={play}
+      onBlur={pause}
+    />
+  );
+}
+
 function TaskCard({
   task,
   compact,
+  onOpenDetail,
 }: {
   task: GenerationTask;
   compact?: boolean;
+  onOpenDetail: () => void;
 }) {
   const { apiKey, removeTask, loadFromTask } = useAppStore();
-  const [copied, setCopied] = useState(false);
+  const [copiedSeed, setCopiedSeed] = useState(false);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-  const [isClamped, setIsClamped] = useState(false);
   const [reused, setReused] = useState(false);
-  const promptRef = useRef<HTMLParagraphElement>(null);
-
-  useLayoutEffect(() => {
-    const el = promptRef.current;
-    if (!el || expanded) return;
-    setIsClamped(el.scrollHeight > el.clientHeight + 1);
-  }, [task.prompt, compact, expanded]);
-
-  useEffect(() => {
-    if (!reused) return;
-    const t = setTimeout(() => setReused(false), 1500);
-    return () => clearTimeout(t);
-  }, [reused]);
 
   const handleReuse = useCallback(() => {
     loadFromTask(task);
@@ -103,7 +148,18 @@ function TaskCard({
     if (typeof window !== "undefined") {
       window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
     }
+    setTimeout(() => setReused(false), 1500);
   }, [loadFromTask, task]);
+
+  const handleCopyPrompt = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(task.prompt);
+      setCopiedPrompt(true);
+      setTimeout(() => setCopiedPrompt(false), 1500);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }, [task.prompt]);
 
   const statusConfig = {
     pending: {
@@ -153,7 +209,9 @@ function TaskCard({
   const cfg = statusConfig[task.status] || statusConfig.failed;
   const Icon = cfg.icon;
   const isFinished = task.status === "succeeded" && task.videoUrl;
-  const canDelete = ["succeeded", "failed", "cancelled", "expired"].includes(task.status);
+  const canDelete = ["succeeded", "failed", "cancelled", "expired"].includes(
+    task.status
+  );
   const canCancel = task.status === "queued";
 
   const handleDelete = useCallback(async () => {
@@ -165,7 +223,7 @@ function TaskCard({
     try {
       await deleteTask(apiKey, task.taskId);
     } catch {
-      // Even if API delete fails, remove from local state
+      /* ignore — still remove locally */
     }
     removeTask(task.id);
     setDeleting(false);
@@ -178,7 +236,7 @@ function TaskCard({
       await deleteTask(apiKey, task.taskId);
       useAppStore.getState().updateTask(task.id, { status: "cancelled" });
     } catch {
-      // Ignore
+      /* ignore */
     }
     setDeleting(false);
   }, [apiKey, task.taskId, task.id]);
@@ -186,24 +244,24 @@ function TaskCard({
   const copySeed = () => {
     if (task.seed !== undefined) {
       navigator.clipboard.writeText(String(task.seed));
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      setCopiedSeed(true);
+      setTimeout(() => setCopiedSeed(false), 1500);
     }
   };
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm h-full flex flex-col">
-      {isFinished ? (
-        <div className="bg-black overflow-hidden flex-shrink-0">
-          <video
+      {isFinished && task.videoUrl ? (
+        <div className="bg-black overflow-hidden flex-shrink-0 relative group">
+          <HoverVideo
             src={task.videoUrl}
-            controls
-            autoPlay
-            loop
             className={`w-full object-contain mx-auto ${
               compact ? "max-h-[240px]" : "max-h-[480px]"
             }`}
           />
+          <div className="pointer-events-none absolute top-2 left-2 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded opacity-100 group-hover:opacity-0 transition-opacity">
+            Hover to play
+          </div>
         </div>
       ) : (
         <div
@@ -243,42 +301,32 @@ function TaskCard({
       <div className={`${compact ? "px-3 py-2" : "px-4 py-3"} flex-1`}>
         <div className="flex items-start gap-1.5">
           <p
-            ref={promptRef}
             className={`flex-1 text-gray-600 leading-relaxed whitespace-pre-wrap break-words ${
-              expanded
-                ? compact
-                  ? "text-[11px]"
-                  : "text-xs"
-                : compact
-                ? "text-[11px] line-clamp-1"
-                : "text-xs line-clamp-2"
+              compact ? "text-[11px] line-clamp-1" : "text-xs line-clamp-2"
             }`}
           >
             {task.prompt}
           </p>
-          {(isClamped || expanded) && (
-            <button
-              onClick={() => setExpanded((v) => !v)}
-              className="shrink-0 p-0.5 -mt-0.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
-              title={expanded ? "접기" : "프롬프트 전체 보기"}
-            >
-              {expanded ? (
-                <ChevronUp className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
-              ) : (
-                <ChevronDown className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
-              )}
-            </button>
-          )}
+          <button
+            onClick={onOpenDetail}
+            className="shrink-0 p-0.5 -mt-0.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded transition-colors"
+            title="상세보기 (영상 + 프롬프트 + 설정)"
+          >
+            <Maximize2 className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
+          </button>
         </div>
 
-        {!compact && task.references && task.references.length > 0 && (
-          <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-            <Paperclip className="w-3 h-3 text-gray-300" />
-            {task.references.map((r) => (
-              <ReferenceThumb key={r.id} asset={r} />
-            ))}
-          </div>
-        )}
+        {!compact && task.references && task.references.length > 0 && (() => {
+          const tags = getRefTags(task.references);
+          return (
+            <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+              <Paperclip className="w-3 h-3 text-gray-300" />
+              {task.references.map((r) => (
+                <ReferenceThumb key={r.id} asset={r} tag={tags[r.id]} />
+              ))}
+            </div>
+          );
+        })()}
 
         <div
           className={`${
@@ -310,7 +358,7 @@ function TaskCard({
                   title="Copy seed"
                 >
                   seed:{task.seed}
-                  {copied ? (
+                  {copiedSeed ? (
                     <Check className="w-2.5 h-2.5 text-green-500" />
                   ) : (
                     <Copy className="w-2.5 h-2.5" />
@@ -333,6 +381,26 @@ function TaskCard({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0 ml-2">
+            <button
+              onClick={handleCopyPrompt}
+              className={`inline-flex items-center gap-0.5 border rounded-lg font-medium transition-colors ${
+                copiedPrompt
+                  ? "border-green-300 bg-green-50 text-green-600"
+                  : "border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+              } ${
+                compact
+                  ? "px-1.5 py-0.5 text-[9px]"
+                  : "px-2 py-0.5 text-[10px]"
+              }`}
+              title="프롬프트 복사"
+            >
+              {copiedPrompt ? (
+                <Check className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
+              ) : (
+                <Copy className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
+              )}
+              {!compact && (copiedPrompt ? "Copied" : "Copy")}
+            </button>
             <button
               onClick={handleReuse}
               className={`inline-flex items-center gap-0.5 border rounded-lg font-medium transition-colors ${
@@ -458,6 +526,12 @@ function ViewToggle({
 export default function VideoResult() {
   const { tasks, clearTasks } = useAppStore();
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+
+  const detailTask =
+    detailTaskId !== null
+      ? tasks.find((t) => t.id === detailTaskId) ?? null
+      : null;
 
   if (tasks.length === 0) {
     return (
@@ -496,16 +570,31 @@ export default function VideoResult() {
         <div className="flex flex-col items-center gap-4">
           {tasks.map((task) => (
             <div key={task.id} className="w-full max-w-2xl">
-              <TaskCard task={task} />
+              <TaskCard
+                task={task}
+                onOpenDetail={() => setDetailTaskId(task.id)}
+              />
             </div>
           ))}
         </div>
       ) : (
         <div className="grid grid-cols-5 gap-3">
           {tasks.map((task) => (
-            <TaskCard key={task.id} task={task} compact />
+            <TaskCard
+              key={task.id}
+              task={task}
+              compact
+              onOpenDetail={() => setDetailTaskId(task.id)}
+            />
           ))}
         </div>
+      )}
+
+      {detailTask && (
+        <TaskDetailModal
+          task={detailTask}
+          onClose={() => setDetailTaskId(null)}
+        />
       )}
     </div>
   );

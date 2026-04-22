@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useState, useEffect } from "react";
+import { useRef, useCallback, useState, useEffect, useMemo } from "react";
 import {
   ImagePlus,
   Film,
@@ -27,12 +27,10 @@ import {
   createAssetGroup,
   createAssetFromUrl,
   createAssetFromFile,
-  uploadFile,
 } from "@/lib/api";
-
-const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
-const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
-const MAX_AUDIO_BYTES = 15 * 1024 * 1024;
+import { useFileUpload } from "@/lib/useFileUpload";
+import { getRefTags } from "@/lib/refTags";
+import { usePromptInsert } from "@/lib/usePromptInsert";
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -41,12 +39,6 @@ function fileToBase64(file: File): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
-}
-
-function getFileType(file: File): "image" | "video" | "audio" {
-  if (file.type.startsWith("video/")) return "video";
-  if (file.type.startsWith("audio/")) return "audio";
-  return "image";
 }
 
 function getRoleForType(type: "image" | "video" | "audio"): string {
@@ -70,13 +62,15 @@ function detectUrlType(url: string): { type: "image" | "video" | "audio"; role: 
 
 function AssetCard({
   asset,
-  uploading,
+  tag,
 }: {
   asset: ReferenceAsset;
-  uploading?: boolean;
+  tag?: string;
 }) {
   const removeReference = useAppStore((s) => s.removeReference);
+  const insertTag = usePromptInsert();
   const isAssetUri = asset.url.startsWith("asset://");
+  const uploading = !!asset.uploading;
 
   return (
     <div className="group relative bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
@@ -99,6 +93,19 @@ function AssetCard({
           <ImagePlus className="w-5 h-5 text-gray-400" />
         )}
       </div>
+      {tag && !uploading && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            insertTag(` ${tag} `);
+          }}
+          className="absolute top-0 left-0 bg-primary-500/90 text-white text-[9px] font-bold px-1 py-0.5 leading-none rounded-br hover:bg-primary-600 transition-colors"
+          title={`프롬프트에 ${tag} 삽입 (BytePlus는 [Image N] 형식으로 자동 변환)`}
+        >
+          {tag}
+        </button>
+      )}
       {isAssetUri && (
         <div className="absolute bottom-0 left-0 right-0 bg-green-500/80 text-[7px] text-white text-center py-0.5 leading-none">
           Asset
@@ -742,106 +749,12 @@ function AssetManagerDialog({
 }
 
 function ReferenceMode() {
-  const { references, addReference, removeReference } = useAppStore();
-  const apiKey = useAppStore((s) => s.apiKey);
+  const { references, addReference } = useAppStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploadingNames, setUploadingNames] = useState<Set<string>>(new Set());
   const [assetDialogOpen, setAssetDialogOpen] = useState(false);
+  const { upload, error: uploadError, clearError } = useFileUpload();
 
-  const handleFileUpload = useCallback(
-    async (files: FileList) => {
-      setUploadError(null);
-
-      for (const file of Array.from(files)) {
-        const type = getFileType(file);
-        const role = getRoleForType(type);
-
-        if (type === "image") {
-          if (file.size > MAX_IMAGE_BYTES) {
-            setUploadError(`이미지는 30MB 이하여야 합니다: ${file.name}`);
-            continue;
-          }
-          try {
-            const dataUri = await fileToBase64(file);
-            addReference({
-              id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              type,
-              url: dataUri,
-              name: file.name,
-              role,
-              preview: dataUri,
-            });
-          } catch {
-            setUploadError(`이미지 로드 실패: ${file.name}`);
-          }
-        } else if (type === "audio") {
-          if (file.size > MAX_AUDIO_BYTES) {
-            setUploadError(`오디오는 15MB 이하여야 합니다: ${file.name}`);
-            continue;
-          }
-          try {
-            const dataUri = await fileToBase64(file);
-            addReference({
-              id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              type,
-              url: dataUri,
-              name: file.name,
-              role,
-            });
-          } catch {
-            setUploadError(`오디오 로드 실패: ${file.name}`);
-          }
-        } else if (type === "video") {
-          if (file.size > MAX_VIDEO_BYTES) {
-            setUploadError(`비디오는 50MB 이하여야 합니다: ${file.name}`);
-            continue;
-          }
-          if (!apiKey) {
-            setUploadError("비디오 업로드를 위한 API 키가 없습니다.");
-            continue;
-          }
-
-          const tempId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-          setUploadingNames((prev) => new Set(prev).add(tempId));
-          addReference({
-            id: tempId,
-            type,
-            url: "",
-            name: file.name,
-            role,
-          });
-
-          try {
-            const result = await uploadFile(apiKey, file);
-            removeReference(tempId);
-            setUploadingNames((prev) => {
-              const next = new Set(prev);
-              next.delete(tempId);
-              return next;
-            });
-            addReference({
-              id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              type,
-              url: result.url,
-              name: file.name,
-              role,
-            });
-          } catch (e) {
-            removeReference(tempId);
-            setUploadingNames((prev) => {
-              const next = new Set(prev);
-              next.delete(tempId);
-              return next;
-            });
-            const msg = e instanceof Error ? e.message : "업로드 실패";
-            setUploadError(`비디오 업로드 실패 (${file.name}): ${msg}`);
-          }
-        }
-      }
-    },
-    [addReference, removeReference, apiKey]
-  );
+  const tags = useMemo(() => getRefTags(references), [references]);
 
   const handleUrlAdd = useCallback(() => {
     const url = window.prompt(
@@ -881,17 +794,13 @@ function ReferenceMode() {
     <div className="space-y-2">
       <div className="flex items-center gap-2 flex-wrap">
         {references.map((ref) => (
-          <AssetCard
-            key={ref.id}
-            asset={ref}
-            uploading={uploadingNames.has(ref.id)}
-          />
+          <AssetCard key={ref.id} asset={ref} tag={tags[ref.id]} />
         ))}
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={references.length >= 12}
           className="w-16 h-16 border border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 hover:bg-primary-50/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-          title="로컬 파일 첨부 (이미지 ≤30MB / 비디오 ≤50MB / 오디오 ≤15MB)"
+          title="로컬 파일 첨부 (이미지 ≤30MB / 비디오 ≤50MB / 오디오 ≤15MB) — 또는 입력창에 드래그&드롭, Ctrl+V로 붙여넣기"
         >
           <Plus className="w-4 h-4 text-gray-400" />
           <span className="text-[9px] text-gray-400 mt-0.5">파일</span>
@@ -921,7 +830,7 @@ function ReferenceMode() {
           multiple
           className="hidden"
           onChange={(e) => {
-            if (e.target.files) handleFileUpload(e.target.files);
+            if (e.target.files) upload(e.target.files);
             e.target.value = "";
           }}
         />
@@ -931,6 +840,12 @@ function ReferenceMode() {
         <div className="flex items-start gap-1.5 p-2 bg-orange-50 border border-orange-200 rounded-lg text-[11px] text-orange-700">
           <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
           <p className="flex-1">{uploadError}</p>
+          <button
+            onClick={clearError}
+            className="text-orange-400 hover:text-orange-600"
+          >
+            <X className="w-3 h-3" />
+          </button>
         </div>
       )}
 

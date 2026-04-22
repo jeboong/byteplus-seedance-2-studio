@@ -65,6 +65,8 @@ export interface ReferenceAsset {
   name: string;
   role: string;
   preview?: string;
+  /** True while a video is being uploaded to BytePlus Files API. */
+  uploading?: boolean;
 }
 
 export interface GenerationTask {
