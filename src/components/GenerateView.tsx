@@ -6,7 +6,7 @@ import {
   Settings2,
   ChevronDown,
 } from "lucide-react";
-import { useAppStore } from "@/lib/store";
+import { useAppStore, hydrateTasks } from "@/lib/store";
 import { createGenerationTask, getTaskStatus } from "@/lib/api";
 import { estimateCost, estimateTokens } from "@/lib/types";
 import Header from "./Header";
@@ -123,6 +123,7 @@ export default function GenerateView() {
   }, [tasks, pollTask]);
 
   useEffect(() => {
+    hydrateTasks();
     return () => {
       Object.values(pollingRef.current).forEach(clearInterval);
     };
@@ -136,6 +137,8 @@ export default function GenerateView() {
     const singleParams = { ...params, outputCount: 1 };
     const trimmedPrompt = prompt.trim();
 
+    const snapshotRefs = references.map((r) => ({ ...r }));
+
     const localIds: string[] = [];
     for (let i = 0; i < count; i++) {
       const localId = `local-${Date.now()}-${i}`;
@@ -146,6 +149,7 @@ export default function GenerateView() {
         prompt: trimmedPrompt,
         status: "pending",
         params: singleParams,
+        references: snapshotRefs,
         createdAt: Date.now(),
       });
     }

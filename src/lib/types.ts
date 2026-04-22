@@ -76,6 +76,7 @@ export interface GenerationTask {
   lastFrameUrl?: string;
   error?: string;
   params: ModelParams;
+  references?: ReferenceAsset[];
   createdAt: number;
   seed?: number;
   usage?: { completion_tokens: number; total_tokens: number };

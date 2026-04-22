@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect, useLayoutEffect } from "react";
 import {
   Download,
   Loader2,
@@ -16,12 +16,59 @@ import {
   ImageIcon,
   Copy,
   Check,
+  RotateCcw,
+  ChevronDown,
+  ChevronUp,
+  Paperclip,
+  Film,
+  Music,
+  UserCheck,
 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { deleteTask } from "@/lib/api";
-import type { GenerationTask } from "@/lib/types";
+import type { GenerationTask, ReferenceAsset } from "@/lib/types";
 
 type ViewMode = "list" | "grid";
+
+function ReferenceThumb({ asset }: { asset: ReferenceAsset }) {
+  const isAsset = asset.url?.startsWith("asset://") ?? false;
+  const isImage = asset.type === "image";
+  const roleLabel =
+    asset.role === "first_frame"
+      ? "F"
+      : asset.role === "last_frame"
+      ? "L"
+      : "";
+
+  return (
+    <div
+      className="relative w-8 h-8 rounded-md overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center shrink-0"
+      title={`${asset.name} (${asset.role || asset.type})`}
+    >
+      {isImage && asset.preview && !isAsset ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={asset.preview}
+          alt={asset.name}
+          className="w-full h-full object-cover"
+        />
+      ) : isAsset ? (
+        <UserCheck className="w-3.5 h-3.5 text-green-500" />
+      ) : asset.type === "video" ? (
+        <Film className="w-3.5 h-3.5 text-blue-400" />
+      ) : asset.type === "audio" ? (
+        <Music className="w-3.5 h-3.5 text-purple-400" />
+      ) : (
+        <ImageIcon className="w-3.5 h-3.5 text-gray-400" />
+      )}
+      {roleLabel && (
+        <span className="absolute bottom-0 right-0 bg-primary-500 text-white text-[7px] font-bold px-1 leading-tight rounded-tl">
+          {roleLabel}
+        </span>
+      )}
+    </div>
+  );
+}
 
 function TaskCard({
   task,
@@ -30,9 +77,33 @@ function TaskCard({
   task: GenerationTask;
   compact?: boolean;
 }) {
-  const { apiKey, removeTask } = useAppStore();
+  const { apiKey, removeTask, loadFromTask } = useAppStore();
   const [copied, setCopied] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [isClamped, setIsClamped] = useState(false);
+  const [reused, setReused] = useState(false);
+  const promptRef = useRef<HTMLParagraphElement>(null);
+
+  useLayoutEffect(() => {
+    const el = promptRef.current;
+    if (!el || expanded) return;
+    setIsClamped(el.scrollHeight > el.clientHeight + 1);
+  }, [task.prompt, compact, expanded]);
+
+  useEffect(() => {
+    if (!reused) return;
+    const t = setTimeout(() => setReused(false), 1500);
+    return () => clearTimeout(t);
+  }, [reused]);
+
+  const handleReuse = useCallback(() => {
+    loadFromTask(task);
+    setReused(true);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+    }
+  }, [loadFromTask, task]);
 
   const statusConfig = {
     pending: {
@@ -170,13 +241,44 @@ function TaskCard({
       )}
 
       <div className={`${compact ? "px-3 py-2" : "px-4 py-3"} flex-1`}>
-        <p
-          className={`text-gray-600 leading-relaxed ${
-            compact ? "text-[11px] line-clamp-1" : "text-xs line-clamp-2"
-          }`}
-        >
-          {task.prompt}
-        </p>
+        <div className="flex items-start gap-1.5">
+          <p
+            ref={promptRef}
+            className={`flex-1 text-gray-600 leading-relaxed whitespace-pre-wrap break-words ${
+              expanded
+                ? compact
+                  ? "text-[11px]"
+                  : "text-xs"
+                : compact
+                ? "text-[11px] line-clamp-1"
+                : "text-xs line-clamp-2"
+            }`}
+          >
+            {task.prompt}
+          </p>
+          {(isClamped || expanded) && (
+            <button
+              onClick={() => setExpanded((v) => !v)}
+              className="shrink-0 p-0.5 -mt-0.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+              title={expanded ? "접기" : "프롬프트 전체 보기"}
+            >
+              {expanded ? (
+                <ChevronUp className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
+              ) : (
+                <ChevronDown className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
+              )}
+            </button>
+          )}
+        </div>
+
+        {!compact && task.references && task.references.length > 0 && (
+          <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+            <Paperclip className="w-3 h-3 text-gray-300" />
+            {task.references.map((r) => (
+              <ReferenceThumb key={r.id} asset={r} />
+            ))}
+          </div>
+        )}
 
         <div
           className={`${
@@ -231,6 +333,26 @@ function TaskCard({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0 ml-2">
+            <button
+              onClick={handleReuse}
+              className={`inline-flex items-center gap-0.5 border rounded-lg font-medium transition-colors ${
+                reused
+                  ? "border-green-300 bg-green-50 text-green-600"
+                  : "border-gray-200 text-gray-500 hover:bg-primary-50 hover:border-primary-200 hover:text-primary-600"
+              } ${
+                compact
+                  ? "px-1.5 py-0.5 text-[9px]"
+                  : "px-2 py-0.5 text-[10px]"
+              }`}
+              title="이 작업의 프롬프트·첨부·설정을 다시 불러오기"
+            >
+              {reused ? (
+                <Check className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
+              ) : (
+                <RotateCcw className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
+              )}
+              {!compact && (reused ? "Loaded" : "Reuse")}
+            </button>
             {isFinished && task.lastFrameUrl && (
               <a
                 href={task.lastFrameUrl}
