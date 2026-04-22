@@ -113,7 +113,8 @@ function AssetCard({
       )}
       <button
         onClick={() => removeReference(asset.id)}
-        className="absolute -top-1 -right-1 p-0.5 bg-gray-600 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
+        className="absolute top-0.5 right-0.5 p-0.5 bg-black/60 hover:bg-black/80 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
+        title="제거"
       >
         <X className="w-2.5 h-2.5" />
       </button>

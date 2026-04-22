@@ -13,11 +13,88 @@ import {
   type ClipboardEvent,
   type KeyboardEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { Image as ImageIcon, Film, Music, UserCheck } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { getRefTags } from "@/lib/refTags";
 
+const DROPDOWN_WIDTH = 230;
+const DROPDOWN_MAX_HEIGHT = 224; // tailwind max-h-56
+
 const TAG_RE = /@(img|vid|aud)\d+/gi;
+
+/**
+ * Compute (x, y) of the caret at `position` within a textarea, relative to
+ * the textarea's border-box top-left. Uses a hidden mirror element that
+ * inherits all text-affecting styles, so the position matches what the
+ * browser will render.
+ */
+function getCaretCoordinates(
+  textarea: HTMLTextAreaElement,
+  position: number
+): { top: number; left: number; height: number } {
+  const style = window.getComputedStyle(textarea);
+  const div = document.createElement("div");
+
+  const props = [
+    "direction",
+    "boxSizing",
+    "width",
+    "height",
+    "overflowX",
+    "overflowY",
+    "borderTopWidth",
+    "borderRightWidth",
+    "borderBottomWidth",
+    "borderLeftWidth",
+    "borderStyle",
+    "paddingTop",
+    "paddingRight",
+    "paddingBottom",
+    "paddingLeft",
+    "fontStyle",
+    "fontVariant",
+    "fontWeight",
+    "fontStretch",
+    "fontSize",
+    "fontSizeAdjust",
+    "lineHeight",
+    "fontFamily",
+    "textAlign",
+    "textTransform",
+    "textIndent",
+    "textDecoration",
+    "letterSpacing",
+    "wordSpacing",
+    "tabSize",
+  ];
+
+  div.style.position = "absolute";
+  div.style.visibility = "hidden";
+  div.style.top = "0";
+  div.style.left = "-9999px";
+  div.style.whiteSpace = "pre-wrap";
+  div.style.wordWrap = "break-word";
+
+  for (const prop of props) {
+    const cssProp = prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
+    div.style.setProperty(cssProp, style.getPropertyValue(cssProp));
+  }
+
+  div.textContent = textarea.value.substring(0, position);
+  const span = document.createElement("span");
+  span.textContent = textarea.value.substring(position) || ".";
+  div.appendChild(span);
+
+  document.body.appendChild(div);
+  const top = span.offsetTop;
+  const left = span.offsetLeft;
+  const height =
+    parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.2;
+  document.body.removeChild(div);
+
+  return { top, left, height };
+}
 
 export interface PromptEditorHandle {
   focus: () => void;
@@ -113,12 +190,17 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
       }
       const tag = m[0].toLowerCase();
       const valid = validTags.has(tag);
+      // CRITICAL: do NOT change font-weight, font-family, letter-spacing, or
+      // anything that affects glyph advance width. The textarea always renders
+      // text at the inherited weight; if the overlay's chip uses bold, glyphs
+      // become wider than the textarea expects and the caret drifts after each
+      // chip. Highlight purely with background + color.
       out.push(
         <span
           key={`c-${i++}`}
           className={
             valid
-              ? "bg-primary-100 text-primary-700 rounded font-semibold"
+              ? "bg-primary-100 text-primary-700 rounded"
               : "bg-amber-100 text-amber-700 rounded line-through"
           }
         >
@@ -146,6 +228,17 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
   const [acQuery, setAcQuery] = useState("");
   const [acStart, setAcStart] = useState(-1);
   const [acIndex, setAcIndex] = useState(0);
+  const [acPos, setAcPos] = useState<{
+    left: number;
+    top: number;
+    flipDown: boolean;
+  }>({ left: 0, top: 0, flipDown: false });
+
+  // Portal target — null on SSR, document.body once mounted on client.
+  const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setPortalEl(document.body);
+  }, []);
 
   const filtered = useMemo(() => {
     if (tagItems.length === 0) return [];
@@ -171,23 +264,60 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
     }
     const cursor = ta.selectionStart ?? 0;
     const before = value.slice(0, cursor);
-    // Match @ followed by alphanumerics at end of `before`.
     const m = /@([A-Za-z0-9]*)$/.exec(before);
     if (!m) {
       setAcOpen(false);
       return;
     }
     const start = cursor - m[0].length;
-    // Only trigger when @ starts a new token (start of string or whitespace before)
     const charBefore = start > 0 ? value[start - 1] : " ";
     if (start !== 0 && !/\s/.test(charBefore)) {
       setAcOpen(false);
       return;
     }
+
+    // Anchor dropdown to the @ glyph (caret position before user typed @).
+    // Use viewport coordinates so portal-rendered dropdown is positioned with
+    // `position: fixed` and is unaffected by parent overflow:hidden.
+    const coords = getCaretCoordinates(ta, start);
+    const rect = ta.getBoundingClientRect();
+    const caretX = rect.left + coords.left - ta.scrollLeft;
+    const caretTop = rect.top + coords.top - ta.scrollTop;
+    const caretBottom = caretTop + coords.height;
+
+    const spaceAbove = caretTop;
+    const spaceBelow = window.innerHeight - caretBottom;
+    // Prefer above (input is usually near the bottom of the screen). Flip to
+    // below only when there clearly isn't room above.
+    const flipDown =
+      spaceAbove < DROPDOWN_MAX_HEIGHT && spaceBelow > spaceAbove;
+
+    const left = Math.max(
+      8,
+      Math.min(window.innerWidth - DROPDOWN_WIDTH - 8, caretX)
+    );
+
+    setAcPos({
+      left,
+      top: flipDown ? caretBottom + 4 : caretTop - 4,
+      flipDown,
+    });
     setAcOpen(true);
     setAcQuery(m[1]);
     setAcStart(start);
   }, [value, tagItems.length]);
+
+  // Close dropdown on scroll/resize so it doesn't drift away from the caret.
+  useEffect(() => {
+    if (!acOpen) return;
+    const close = () => setAcOpen(false);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [acOpen]);
 
   const acceptAutocomplete = useCallback(
     (item: (typeof tagItems)[number]) => {
@@ -256,12 +386,15 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
   }, [checkAutocomplete]);
 
   return (
-    <div className={`relative ${className}`}>
-      {/* Highlight overlay (sits behind the transparent textarea text). */}
+    <div
+      className={`relative bg-surface-50 border border-gray-200 rounded-xl focus-within:ring-2 focus-within:ring-primary-400 focus-within:border-transparent transition-all ${className}`}
+    >
+      {/* Highlight overlay sits behind the transparent textarea text.
+       * Padding/border MUST match the textarea exactly for caret alignment. */}
       <div
         ref={overlayRef}
         aria-hidden
-        className="pointer-events-none absolute inset-0 px-3 py-2 text-sm leading-relaxed text-gray-700 whitespace-pre-wrap break-words overflow-hidden rounded-xl border border-transparent box-border"
+        className="pointer-events-none absolute inset-0 px-3 py-2 text-sm leading-relaxed text-gray-700 whitespace-pre-wrap break-words overflow-hidden box-border"
       >
         {overlay}
       </div>
@@ -277,68 +410,73 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
         onClick={handleClick}
         onFocus={onFocus}
         onBlur={() => {
-          // small delay so dropdown click can register before blur closes it
           setTimeout(() => setAcOpen(false), 120);
           onBlur?.();
         }}
         rows={rows}
         placeholder={placeholder}
         spellCheck={false}
-        className="prompt-editor-textarea relative w-full px-3 py-2 bg-surface-50 border border-gray-200 rounded-xl text-sm leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent placeholder:text-gray-400 transition-all box-border"
+        // `font: inherit` keeps glyph metrics in sync with the overlay so the
+        // caret sits exactly on the rendered text baseline.
+        style={{ font: "inherit" }}
+        className="prompt-editor-textarea relative w-full px-3 py-2 bg-transparent border-0 text-sm leading-relaxed resize-none focus:outline-none focus:ring-0 placeholder:text-gray-400 box-border"
       />
 
-      {acOpen && filtered.length > 0 && (
-        <div className="absolute bottom-full mb-1 left-2 z-30 bg-white rounded-xl shadow-lg border border-gray-100 py-1 min-w-[220px] max-h-72 overflow-y-auto">
-          <div className="flex items-center justify-between px-3 py-1">
-            <p className="text-[10px] text-gray-400 font-medium">
-              첨부 태그 ({filtered.length})
-            </p>
-            <p className="text-[9px] text-gray-300">
-              ↑↓ Tab/Enter Esc
-            </p>
-          </div>
-          {filtered.map((item, i) => (
-            <button
-              key={item.id}
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                acceptAutocomplete(item);
-              }}
-              onMouseEnter={() => setAcIndex(i)}
-              className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 ${
-                i === acIndex ? "bg-primary-50" : "hover:bg-gray-50"
-              }`}
-            >
-              {item.type === "image" && item.preview ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img
-                  src={item.preview}
-                  alt=""
-                  className="w-7 h-7 object-cover rounded shrink-0"
-                />
-              ) : item.url?.startsWith("asset://") ? (
-                <UserCheck className="w-4 h-4 text-green-500 shrink-0" />
-              ) : item.type === "video" ? (
-                <Film className="w-4 h-4 text-blue-400 shrink-0" />
-              ) : item.type === "audio" ? (
-                <Music className="w-4 h-4 text-purple-400 shrink-0" />
-              ) : (
-                <ImageIcon className="w-4 h-4 text-gray-400 shrink-0" />
-              )}
-              <span className="font-mono text-primary-600 font-semibold">
-                {item.tag}
-              </span>
-              <span className="text-gray-400 truncate flex-1">
-                {item.name}
-              </span>
-              <span className="text-[9px] text-gray-300 uppercase">
-                {item.type}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+      {portalEl &&
+        acOpen &&
+        filtered.length > 0 &&
+        createPortal(
+          <div
+            className="fixed z-[60] bg-white rounded-lg shadow-xl border border-gray-100 py-0.5 max-h-56 overflow-y-auto"
+            style={{
+              left: acPos.left,
+              top: acPos.top,
+              width: DROPDOWN_WIDTH,
+              transform: acPos.flipDown ? undefined : "translateY(-100%)",
+            }}
+            // Prevent textarea blur when interacting with the dropdown.
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            {filtered.map((item, i) => (
+              <button
+                key={item.id}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  acceptAutocomplete(item);
+                }}
+                onMouseEnter={() => setAcIndex(i)}
+                className={`w-full text-left px-2 py-1 text-[11px] flex items-center gap-1.5 ${
+                  i === acIndex ? "bg-primary-50" : "hover:bg-gray-50"
+                }`}
+              >
+                {item.type === "image" && item.preview ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={item.preview}
+                    alt=""
+                    className="w-5 h-5 object-cover rounded shrink-0"
+                  />
+                ) : item.url?.startsWith("asset://") ? (
+                  <UserCheck className="w-3.5 h-3.5 text-green-500 shrink-0" />
+                ) : item.type === "video" ? (
+                  <Film className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                ) : item.type === "audio" ? (
+                  <Music className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                ) : (
+                  <ImageIcon className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                )}
+                <span className="font-mono text-primary-600 font-semibold">
+                  {item.tag}
+                </span>
+                <span className="text-gray-400 truncate flex-1 text-[10px]">
+                  {item.name}
+                </span>
+              </button>
+            ))}
+          </div>,
+          portalEl
+        )}
     </div>
   );
 });
