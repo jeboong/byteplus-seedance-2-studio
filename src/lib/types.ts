@@ -21,9 +21,16 @@ export interface ModelOption {
   id: ModelId;
   name: string;
   badge?: string;
+  supports1080p?: boolean;
   pricing: {
-    includeVideoInput: number;
-    excludeVideoInput: number;
+    standard: {
+      includeVideoInput: number;
+      excludeVideoInput: number;
+    };
+    p1080?: {
+      includeVideoInput: number;
+      excludeVideoInput: number;
+    };
   };
 }
 
@@ -32,12 +39,19 @@ export const MODELS: ModelOption[] = [
     id: "dreamina-seedance-2-0-260128",
     name: "Seedance 2.0",
     badge: "Recommended",
-    pricing: { includeVideoInput: 28, excludeVideoInput: 46 },
+    supports1080p: true,
+    pricing: {
+      standard: { includeVideoInput: 4.3, excludeVideoInput: 7.0 },
+      p1080: { includeVideoInput: 4.7, excludeVideoInput: 7.7 },
+    },
   },
   {
     id: "dreamina-seedance-2-0-fast-260128",
     name: "Seedance 2.0 Fast",
-    pricing: { includeVideoInput: 22, excludeVideoInput: 37 },
+    supports1080p: false,
+    pricing: {
+      standard: { includeVideoInput: 3.3, excludeVideoInput: 5.6 },
+    },
   },
 ];
 
@@ -124,40 +138,140 @@ export const RATIO_ICONS: Record<AspectRatio, { w: number; h: number }> = {
   "9:16": { w: 9, h: 16 },
 };
 
-/**
- * 실측 데이터 기반 토큰 추정:
- * 15s 720p 16:9 audio=true → 324,900 tokens (API 실측)
- * → 약 21,660 tokens/s at 720p
- */
-const TOKENS_PER_SEC_720P = 21660;
-const TOKENS_PER_SEC_480P = 12000;
-// 1080p ≈ 2.25x pixel area of 720p
-const TOKENS_PER_SEC_1080P = Math.round(TOKENS_PER_SEC_720P * 2.25);
+const FRAME_RATE = 24;
 
-export function estimateTokens(params: ModelParams): number {
+const OUTPUT_DIMENSIONS: Record<
+  Resolution,
+  Record<AspectRatio, { width: number; height: number }>
+> = {
+  "480p": {
+    adaptive: { width: 864, height: 496 },
+    "16:9": { width: 864, height: 496 },
+    "9:16": { width: 864, height: 496 },
+    "4:3": { width: 752, height: 560 },
+    "3:4": { width: 752, height: 560 },
+    "1:1": { width: 640, height: 640 },
+    "21:9": { width: 992, height: 432 },
+  },
+  "720p": {
+    adaptive: { width: 1280, height: 720 },
+    "16:9": { width: 1280, height: 720 },
+    "9:16": { width: 1280, height: 720 },
+    "4:3": { width: 1112, height: 834 },
+    "3:4": { width: 1112, height: 834 },
+    "1:1": { width: 960, height: 960 },
+    "21:9": { width: 1470, height: 630 },
+  },
+  "1080p": {
+    adaptive: { width: 1920, height: 1080 },
+    "16:9": { width: 1920, height: 1080 },
+    "9:16": { width: 1920, height: 1080 },
+    "4:3": { width: 1664, height: 1248 },
+    "3:4": { width: 1664, height: 1248 },
+    "1:1": { width: 1440, height: 1440 },
+    "21:9": { width: 2206, height: 946 },
+  },
+};
+
+const VIDEO_INPUT_MIN_TOKENS: Record<Resolution, Record<number, number>> = {
+  "480p": {
+    4: 70308,
+    5: 90396,
+    6: 100440,
+    7: 120528,
+    8: 140616,
+    9: 150660,
+    10: 170748,
+    11: 190836,
+    12: 200880,
+    13: 220968,
+    14: 241056,
+    15: 251100,
+  },
+  "720p": {
+    4: 151200,
+    5: 194400,
+    6: 216000,
+    7: 259200,
+    8: 302400,
+    9: 324000,
+    10: 367200,
+    11: 410400,
+    12: 432000,
+    13: 475200,
+    14: 518400,
+    15: 540000,
+  },
+  "1080p": {
+    4: 340200,
+    5: 437400,
+    6: 486000,
+    7: 583200,
+    8: 680400,
+    9: 729000,
+    10: 826200,
+    11: 923400,
+    12: 972000,
+    13: 1069200,
+    14: 1166400,
+    15: 1215000,
+  },
+};
+
+function getDurationSeconds(params: ModelParams): number {
+  return params.durationType === "seconds" ? params.duration : 10;
+}
+
+function getOutputTokenEstimate(params: ModelParams): number {
+  const dur = getDurationSeconds(params);
+  const dim = OUTPUT_DIMENSIONS[params.resolution][params.ratio];
+  return Math.round((dim.width * dim.height * FRAME_RATE * dur) / 1024);
+}
+
+export function estimateTokens(
+  params: ModelParams,
+  hasVideoRef = false
+): number {
   const dur = params.durationType === "seconds" ? params.duration : 10;
-  const tps =
-    params.resolution === "1080p"
-      ? TOKENS_PER_SEC_1080P
-      : params.resolution === "720p"
-      ? TOKENS_PER_SEC_720P
-      : TOKENS_PER_SEC_480P;
-  return Math.round(dur * tps * params.outputCount);
+  const outputTokens = getOutputTokenEstimate(params);
+  const minForVideoInput =
+    VIDEO_INPUT_MIN_TOKENS[params.resolution][dur] ?? outputTokens;
+  const tokensPerVideo = hasVideoRef
+    ? Math.max(outputTokens, minForVideoInput)
+    : outputTokens;
+  return Math.round(tokensPerVideo * params.outputCount);
+}
+
+export function tokenRatePerMillion(
+  params: ModelParams,
+  hasVideoRef: boolean
+): number {
+  const model = MODELS.find((m) => m.id === params.modelId) ?? MODELS[0];
+  const pricing =
+    params.resolution === "1080p" && model.pricing.p1080
+      ? model.pricing.p1080
+      : model.pricing.standard;
+  return hasVideoRef
+    ? pricing.includeVideoInput
+    : pricing.excludeVideoInput;
 }
 
 export function estimateCost(params: ModelParams, hasVideoRef: boolean): number {
-  const model = MODELS.find((m) => m.id === params.modelId) ?? MODELS[0];
-  const ratePerM = hasVideoRef
-    ? model.pricing.includeVideoInput
-    : model.pricing.excludeVideoInput;
-  const tokens = estimateTokens(params);
+  const ratePerM = tokenRatePerMillion(params, hasVideoRef);
+  const tokens = estimateTokens(params, hasVideoRef);
   return Math.round((tokens / 1_000_000) * ratePerM * 1000) / 1000;
 }
 
 export function ratePerKTokens(params: ModelParams, hasVideoRef: boolean): number {
-  const model = MODELS.find((m) => m.id === params.modelId) ?? MODELS[0];
-  const ratePerM = hasVideoRef
-    ? model.pricing.includeVideoInput
-    : model.pricing.excludeVideoInput;
+  const ratePerM = tokenRatePerMillion(params, hasVideoRef);
   return Math.round((ratePerM / 1000) * 10000) / 10000;
+}
+
+export function costFromUsage(
+  params: ModelParams,
+  hasVideoRef: boolean,
+  totalTokens: number
+): number {
+  const ratePerM = tokenRatePerMillion(params, hasVideoRef);
+  return Math.round((totalTokens / 1_000_000) * ratePerM * 1000) / 1000;
 }

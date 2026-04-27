@@ -27,10 +27,33 @@ import { useAppStore } from "@/lib/store";
 import { deleteTask } from "@/lib/api";
 import { getRefTags } from "@/lib/refTags";
 import { downloadCrossOrigin, isUrlExpired } from "@/lib/downloadVideo";
+import { costFromUsage } from "@/lib/types";
 import type { GenerationTask, ReferenceAsset } from "@/lib/types";
 import TaskDetailModal from "./TaskDetailModal";
 
 type ViewMode = "list" | "grid";
+
+function taskHasVideoInput(task: GenerationTask): boolean {
+  return task.references?.some((r) => r.type === "video") ?? false;
+}
+
+function cssAspectRatio(ratio?: string): string {
+  switch (ratio) {
+    case "21:9":
+      return "21 / 9";
+    case "4:3":
+      return "4 / 3";
+    case "1:1":
+      return "1 / 1";
+    case "3:4":
+      return "3 / 4";
+    case "9:16":
+      return "9 / 16";
+    case "16:9":
+    default:
+      return "16 / 9";
+  }
+}
 
 function ReferenceThumb({
   asset,
@@ -87,24 +110,27 @@ function ReferenceThumb({
  * Hover-to-play video with lazy network activity.
  *
  * 핵심 최적화:
- * 1. preload="none"  → 마운트 시점에 어떤 네트워크 요청도 일으키지 않음.
- * 2. IntersectionObserver → 뷰포트 안에 들어와야만 video 엘리먼트에 src 부여.
+ * 1. IntersectionObserver → 뷰포트 안에 들어와야만 video 엘리먼트에 src 부여.
  *    뷰포트 밖이면 src를 떼서 브라우저가 버퍼/메타데이터를 해제하게 함.
- * 3. 호버 진입 시점에 비로소 metadata + 재생을 시작.
+ * 2. 실제 레이아웃 박스를 관찰해서 display: contents로 인한 미리보기
+ *    누락을 피함.
  *
  * 결과: 카드 100개가 있어도 동시에 100개의 네트워크 요청이 발생하지 않고,
  *      현재 보이는 카드 + 호버한 카드만 데이터를 받는다.
  */
 function HoverVideo({
   src,
-  className,
+  compact,
+  ratio,
 }: {
   src: string;
-  className?: string;
+  compact?: boolean;
+  ratio?: string;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [inView, setInView] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -137,7 +163,13 @@ function HoverVideo({
   }, []);
 
   return (
-    <div ref={wrapRef} className="contents">
+    <div
+      ref={wrapRef}
+      className={`relative w-full bg-black overflow-hidden flex items-center justify-center ${
+        compact ? "max-h-[240px]" : "max-h-[480px]"
+      }`}
+      style={{ aspectRatio: cssAspectRatio(ratio) }}
+    >
       {inView ? (
         <video
           ref={videoRef}
@@ -145,22 +177,68 @@ function HoverVideo({
           muted
           loop
           playsInline
-          preload="none"
+          preload="metadata"
           controls
-          className={className}
+          className="absolute inset-0 w-full h-full object-contain"
           onMouseEnter={play}
           onMouseLeave={pause}
           onFocus={play}
           onBlur={pause}
+          onLoadedMetadata={() => setLoadError(false)}
+          onError={() => setLoadError(true)}
         />
       ) : (
         <div
-          className={`${className ?? ""} bg-black/40 dark:bg-black/60 flex items-center justify-center`}
+          className="absolute inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center"
           aria-label="video placeholder"
         >
           <Film className="w-6 h-6 text-white/30" />
         </div>
       )}
+      {loadError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/80 text-white/70 text-xs px-4 text-center">
+          <Film className="w-5 h-5 text-white/40" />
+          <span>Preview unavailable</span>
+          <a
+            href={src}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-white/90 underline underline-offset-2"
+          >
+            Open video URL
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GenerationState({
+  label,
+  compact,
+}: {
+  label: string;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={`generation-aura flex flex-col items-center justify-center gap-3 flex-shrink-0 ${
+        compact ? "h-36" : "h-52"
+      }`}
+    >
+      <div className="generation-core" />
+      <div className="text-center">
+        <span
+          className={`block font-semibold text-primary-700 ${
+            compact ? "text-[11px]" : "text-sm"
+          }`}
+        >
+          {label}
+        </span>
+        <span className="block text-[10px] text-gray-400 mt-0.5">
+          Seedance 2.0
+        </span>
+      </div>
     </div>
   );
 }
@@ -268,6 +346,12 @@ function TaskCard({
     task.status
   );
   const canCancel = task.status === "queued";
+  const isGenerating = ["pending", "queued", "running"].includes(task.status);
+  const hasVideoInput = taskHasVideoInput(task);
+  const actualCost =
+    task.usage && task.usage.total_tokens > 0
+      ? costFromUsage(task.params, hasVideoInput, task.usage.total_tokens)
+      : null;
 
   const handleDelete = useCallback(async () => {
     if (!apiKey || !task.taskId) {
@@ -310,14 +394,15 @@ function TaskCard({
         <div className="bg-black overflow-hidden flex-shrink-0 relative group">
           <HoverVideo
             src={task.videoUrl}
-            className={`w-full object-contain mx-auto ${
-              compact ? "max-h-[240px]" : "max-h-[480px]"
-            }`}
+            compact={compact}
+            ratio={task.actualRatio || task.params.ratio}
           />
           <div className="pointer-events-none absolute top-2 left-2 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded opacity-100 group-hover:opacity-0 transition-opacity">
             Hover to play
           </div>
         </div>
+      ) : isGenerating ? (
+        <GenerationState compact={compact} label={cfg.label} />
       ) : (
         <div
           className={`${cfg.bg} flex flex-col items-center justify-center gap-2 flex-shrink-0 ${
@@ -325,9 +410,7 @@ function TaskCard({
           }`}
         >
           <Icon
-            className={`${compact ? "w-6 h-6" : "w-7 h-7"} ${cfg.color} ${
-              task.status === "running" ? "animate-spin" : ""
-            }`}
+            className={`${compact ? "w-6 h-6" : "w-7 h-7"} ${cfg.color}`}
           />
           <span
             className={`${compact ? "text-xs" : "text-sm"} font-medium ${
@@ -336,15 +419,6 @@ function TaskCard({
           >
             {cfg.label}
           </span>
-          {task.status === "running" && (
-            <div
-              className={`${
-                compact ? "w-20" : "w-32"
-              } h-1.5 bg-gray-200 rounded-full overflow-hidden mt-1`}
-            >
-              <div className="h-full bg-primary-400 rounded-full animate-pulse w-2/3" />
-            </div>
-          )}
           {task.error && (
             <p className="text-xs text-red-500 max-w-xs text-center mt-1 px-4">
               {task.error}
@@ -430,6 +504,12 @@ function TaskCard({
               <>
                 <span>·</span>
                 <span>{(task.usage.total_tokens / 1000).toFixed(1)}K tokens</span>
+                {actualCost !== null && (
+                  <>
+                    <span>·</span>
+                    <span>${actualCost.toFixed(3)}</span>
+                  </>
+                )}
               </>
             )}
             {!compact && (

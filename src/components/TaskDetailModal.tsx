@@ -20,7 +20,28 @@ import { useAppStore } from "@/lib/store";
 import { deleteTask } from "@/lib/api";
 import { getRefTags } from "@/lib/refTags";
 import { downloadCrossOrigin, isUrlExpired } from "@/lib/downloadVideo";
+import { costFromUsage } from "@/lib/types";
 import type { GenerationTask, ReferenceAsset } from "@/lib/types";
+
+function taskHasVideoInput(task: GenerationTask): boolean {
+  return task.references?.some((r) => r.type === "video") ?? false;
+}
+
+function ModalGenerationState({ status }: { status: string }) {
+  return (
+    <div className="generation-aura w-64 h-40 rounded-2xl flex flex-col items-center justify-center gap-3">
+      <div className="generation-core" />
+      <div className="text-center">
+        <span className="block text-sm font-semibold text-primary-700 capitalize">
+          {status === "running" ? "Generating" : status}
+        </span>
+        <span className="block text-[10px] text-gray-400 mt-0.5">
+          Seedance 2.0
+        </span>
+      </div>
+    </div>
+  );
+}
 
 function ThumbInline({
   asset,
@@ -99,6 +120,11 @@ export default function TaskDetailModal({
 
   const tags = task.references ? getRefTags(task.references) : {};
   const isFinished = task.status === "succeeded" && task.videoUrl && !expired;
+  const isGenerating = ["pending", "queued", "running"].includes(task.status);
+  const actualCost =
+    task.usage && task.usage.total_tokens > 0
+      ? costFromUsage(task.params, taskHasVideoInput(task), task.usage.total_tokens)
+      : null;
 
   const handleDownload = useCallback(async () => {
     if (!task.videoUrl || downloading) return;
@@ -185,6 +211,8 @@ export default function TaskDetailModal({
               preload="metadata"
               className="w-full max-h-[90vh] object-contain"
             />
+          ) : isGenerating ? (
+            <ModalGenerationState status={task.status} />
           ) : (
             <div className="text-white/70 text-sm flex flex-col items-center gap-2 py-12">
               <Loader2
@@ -356,6 +384,14 @@ export default function TaskDetailModal({
                   <dd className="text-gray-700">
                     {(task.usage.total_tokens / 1000).toFixed(1)}K
                   </dd>
+                  {actualCost !== null && (
+                    <>
+                      <dt className="text-gray-400">Cost</dt>
+                      <dd className="text-gray-700">
+                        ${actualCost.toFixed(3)}
+                      </dd>
+                    </>
+                  )}
                 </>
               )}
             </dl>

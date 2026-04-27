@@ -18,6 +18,25 @@ import PromptEditor, { type PromptEditorHandle } from "./PromptEditor";
 import ReferenceUpload from "./ReferenceUpload";
 import VideoResult from "./VideoResult";
 
+function readContentUrl(
+  content: unknown,
+  key: "video_url" | "last_frame_url"
+): string | undefined {
+  if (!content) return undefined;
+  if (Array.isArray(content)) {
+    for (const item of content) {
+      const found = readContentUrl(item, key);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  if (typeof content !== "object") return undefined;
+  const record = content as Record<string, unknown>;
+  const value = record[key];
+  if (typeof value === "string" && value.length > 0) return value;
+  return undefined;
+}
+
 export default function GenerateView() {
   const {
     apiKey,
@@ -136,10 +155,12 @@ export default function GenerateView() {
           const status = result.status;
 
           if (status === "succeeded") {
+            const videoUrl = readContentUrl(result.content, "video_url");
+            const lastFrameUrl = readContentUrl(result.content, "last_frame_url");
             updateTask(localId, {
               status: "succeeded",
-              videoUrl: result.content?.video_url,
-              lastFrameUrl: result.content?.last_frame_url,
+              videoUrl,
+              lastFrameUrl,
               seed: result.seed,
               usage: result.usage,
               actualDuration: result.duration,
@@ -431,7 +452,7 @@ export default function GenerateView() {
 
                   <div className="flex items-center gap-2 shrink-0 ml-2">
                     <span className="text-[10px] text-gray-400">
-                      ~{(estimateTokens(params) / 1000).toFixed(0)}K tokens · ${cost.toFixed(3)}
+                      ~{(estimateTokens(params, hasVideoRef) / 1000).toFixed(0)}K tokens · ${cost.toFixed(3)}
                     </span>
                     <button
                       onClick={handleGenerate}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   RefreshCw,
   X,
@@ -65,6 +65,12 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
 
   const currentModel = MODELS.find((m) => m.id === params.modelId) ?? MODELS[0];
 
+  useEffect(() => {
+    if (params.resolution === "1080p" && currentModel.supports1080p === false) {
+      setParams({ resolution: "720p" });
+    }
+  }, [currentModel.supports1080p, params.resolution, setParams]);
+
   const randomSeed = () => {
     setParams({ seed: String(Math.floor(Math.random() * 2147483647)) });
   };
@@ -128,7 +134,13 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
                         params.modelId === m.id ? "bg-primary-50" : ""
                       }`}
                       onClick={() => {
-                        setParams({ modelId: m.id });
+                        setParams({
+                          modelId: m.id,
+                          resolution:
+                            m.supports1080p === false && params.resolution === "1080p"
+                              ? "720p"
+                              : params.resolution,
+                        });
                         setModelDropdown(false);
                       }}
                     >
@@ -149,11 +161,17 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
                       </div>
                       <div className="mt-1 flex gap-3 text-[10px] text-gray-400">
                         <span>
-                          With video: ${m.pricing.includeVideoInput}/M tokens
+                          Video input: ${m.pricing.standard.includeVideoInput}/M
                         </span>
                         <span>
-                          Without video: ${m.pricing.excludeVideoInput}/M tokens
+                          No video: ${m.pricing.standard.excludeVideoInput}/M
                         </span>
+                        {m.pricing.p1080 && (
+                          <span>
+                            1080p: ${m.pricing.p1080.includeVideoInput}/$
+                            {m.pricing.p1080.excludeVideoInput}/M
+                          </span>
+                        )}
                       </div>
                     </button>
                   ))}
@@ -221,24 +239,32 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
             Resolution
           </label>
           <div className="grid grid-cols-3 gap-1 bg-surface-100 rounded-xl p-1">
-            {(["480p", "720p", "1080p"] as const).map((res) => (
-              <button
-                key={res}
-                onClick={() => setParams({ resolution: res })}
-                className={`relative py-2 rounded-lg text-xs font-medium transition-all ${
-                  params.resolution === res
-                    ? "bg-white text-gray-800 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {res}
-                {res === "1080p" && (
-                  <span className="absolute -top-1 -right-1 bg-amber-400 text-white text-[8px] font-bold px-1 rounded-full">
-                    BETA
-                  </span>
-                )}
-              </button>
-            ))}
+            {(["480p", "720p", "1080p"] as const).map((res) => {
+              const disabled =
+                res === "1080p" && currentModel.supports1080p === false;
+              return (
+                <button
+                  key={res}
+                  onClick={() => {
+                    if (!disabled) setParams({ resolution: res });
+                  }}
+                  disabled={disabled}
+                  title={disabled ? "Fast 모델은 1080p 출력을 지원하지 않습니다." : res}
+                  className={`relative py-2 rounded-lg text-xs font-medium transition-all ${
+                    params.resolution === res
+                      ? "bg-white text-gray-800 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  } ${disabled ? "opacity-40 cursor-not-allowed hover:text-gray-500" : ""}`}
+                >
+                  {res}
+                  {res === "1080p" && (
+                    <span className="absolute -top-1 -right-1 bg-amber-400 text-white text-[8px] font-bold px-1 rounded-full">
+                      BETA
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
           {params.mode === "first_last_frame" && (
             <p className="text-[11px] text-blue-600 mt-1.5">

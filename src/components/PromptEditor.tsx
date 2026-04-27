@@ -387,14 +387,14 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
 
   return (
     <div
-      className={`relative bg-surface-50 border border-gray-200 rounded-xl focus-within:ring-2 focus-within:ring-primary-400 focus-within:border-transparent transition-all ${className}`}
+      className={`relative bg-surface-50 border border-gray-200 rounded-xl text-sm leading-relaxed text-gray-700 focus-within:ring-2 focus-within:ring-primary-400 focus-within:border-transparent transition-all ${className}`}
     >
       {/* Highlight overlay sits behind the transparent textarea text.
        * Padding/border MUST match the textarea exactly for caret alignment. */}
       <div
         ref={overlayRef}
         aria-hidden
-        className="pointer-events-none absolute inset-0 px-3 py-2 text-sm leading-relaxed text-gray-700 whitespace-pre-wrap break-words overflow-hidden box-border"
+        className="pointer-events-none absolute inset-0 px-3 py-2 whitespace-pre-wrap break-words overflow-hidden box-border"
       >
         {overlay}
       </div>
@@ -416,10 +416,10 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
         rows={rows}
         placeholder={placeholder}
         spellCheck={false}
-        // `font: inherit` keeps glyph metrics in sync with the overlay so the
-        // caret sits exactly on the rendered text baseline.
-        style={{ font: "inherit" }}
-        className="prompt-editor-textarea relative w-full px-3 py-2 bg-transparent border-0 text-sm leading-relaxed resize-none focus:outline-none focus:ring-0 placeholder:text-gray-400 box-border"
+        // Inherit the exact same text metrics as the overlay. Keeping this in
+        // one parent fixes intermittent caret drift after chips/wrapped lines.
+        style={{ font: "inherit", lineHeight: "inherit", letterSpacing: "inherit" }}
+        className="prompt-editor-textarea relative w-full px-3 py-2 bg-transparent border-0 resize-none whitespace-pre-wrap break-words focus:outline-none focus:ring-0 placeholder:text-gray-400 box-border"
       />
 
       {portalEl &&
