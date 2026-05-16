@@ -6,7 +6,7 @@ import Onboarding from "@/components/Onboarding";
 import GenerateView from "@/components/GenerateView";
 
 export default function Home() {
-  const { apiKey, setApiKey } = useAppStore();
+  const { apiKey, alibabaApiKey, setApiKey, setAlibabaApiKey } = useAppStore();
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -14,8 +14,12 @@ export default function Home() {
     if (stored) {
       setApiKey(stored);
     }
+    const storedAlibaba = localStorage.getItem("alibaba_modelstudio_api_key");
+    if (storedAlibaba) {
+      setAlibabaApiKey(storedAlibaba);
+    }
     setLoaded(true);
-  }, [setApiKey]);
+  }, [setApiKey, setAlibabaApiKey]);
 
   if (!loaded) {
     return (
@@ -25,7 +29,7 @@ export default function Home() {
     );
   }
 
-  if (!apiKey) {
+  if (!apiKey && !alibabaApiKey) {
     return <Onboarding />;
   }
 

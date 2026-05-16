@@ -20,26 +20,42 @@ import { useAppStore } from "@/lib/store";
 import { deleteTask } from "@/lib/api";
 import { getRefTags } from "@/lib/refTags";
 import { downloadCrossOrigin, isUrlExpired } from "@/lib/downloadVideo";
-import { costFromUsage } from "@/lib/types";
+import { costFromUsage, getModelOption, isAlibabaModel } from "@/lib/types";
 import type { GenerationTask, ReferenceAsset } from "@/lib/types";
+import GenerationFX from "./GenerationFX";
 
 function taskHasVideoInput(task: GenerationTask): boolean {
   return task.references?.some((r) => r.type === "video") ?? false;
 }
 
-function ModalGenerationState({ status }: { status: string }) {
+function getUsageLabel(task: GenerationTask): string | null {
+  if (!task.usage) return null;
+  if (typeof task.usage.total_tokens === "number") {
+    return `${(task.usage.total_tokens / 1000).toFixed(1)}K`;
+  }
+  const duration = task.usage.output_video_duration ?? task.usage.duration;
+  const sr = task.usage.SR;
+  const parts = [
+    typeof duration === "number" ? `${duration}s` : null,
+    sr ? `${sr}P` : null,
+    task.usage.ratio,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+function ModalGenerationState({
+  status,
+  modelLabel,
+}: {
+  status: string;
+  modelLabel: string;
+}) {
   return (
-    <div className="generation-aura w-64 h-40 rounded-2xl flex flex-col items-center justify-center gap-3">
-      <div className="generation-core" />
-      <div className="text-center">
-        <span className="block text-sm font-semibold text-primary-700 capitalize">
-          {status === "running" ? "Generating" : status}
-        </span>
-        <span className="block text-[10px] text-gray-400 mt-0.5">
-          Seedance 2.0
-        </span>
-      </div>
-    </div>
+    <GenerationFX
+      label={status === "running" ? "Generating" : status}
+      modelLabel={modelLabel}
+      className="w-64 h-40 rounded-2xl"
+    />
   );
 }
 
@@ -101,7 +117,7 @@ export default function TaskDetailModal({
   task: GenerationTask;
   onClose: () => void;
 }) {
-  const { apiKey, removeTask, loadFromTask } = useAppStore();
+  const { apiKey, alibabaApiKey, removeTask, loadFromTask } = useAppStore();
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [copiedSeed, setCopiedSeed] = useState(false);
   const [reused, setReused] = useState(false);
@@ -121,10 +137,14 @@ export default function TaskDetailModal({
   const tags = task.references ? getRefTags(task.references) : {};
   const isFinished = task.status === "succeeded" && task.videoUrl && !expired;
   const isGenerating = ["pending", "queued", "running"].includes(task.status);
+  const isAlibaba = isAlibabaModel(task.params.modelId);
+  const taskModel = getModelOption(task.params.modelId);
+  const taskApiKey = isAlibaba ? alibabaApiKey : apiKey;
   const actualCost =
-    task.usage && task.usage.total_tokens > 0
+    typeof task.usage?.total_tokens === "number" && task.usage.total_tokens > 0
       ? costFromUsage(task.params, taskHasVideoInput(task), task.usage.total_tokens)
       : null;
+  const usageLabel = getUsageLabel(task);
 
   const handleDownload = useCallback(async () => {
     if (!task.videoUrl || downloading) return;
@@ -167,21 +187,21 @@ export default function TaskDetailModal({
   }, [loadFromTask, task]);
 
   const handleDelete = useCallback(async () => {
-    if (!apiKey || !task.taskId) {
+    if (!taskApiKey || !task.taskId) {
       removeTask(task.id);
       onClose();
       return;
     }
     setDeleting(true);
     try {
-      await deleteTask(apiKey, task.taskId);
+      await deleteTask(taskApiKey, task.taskId, task.params.modelId);
     } catch {
       /* even if API delete fails, remove locally */
     }
     removeTask(task.id);
     setDeleting(false);
     onClose();
-  }, [apiKey, task.taskId, task.id, removeTask, onClose]);
+  }, [taskApiKey, task.taskId, task.id, task.params.modelId, removeTask, onClose]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
@@ -212,7 +232,7 @@ export default function TaskDetailModal({
               className="w-full max-h-[90vh] object-contain"
             />
           ) : isGenerating ? (
-            <ModalGenerationState status={task.status} />
+            <ModalGenerationState status={task.status} modelLabel={taskModel.name} />
           ) : (
             <div className="text-white/70 text-sm flex flex-col items-center gap-2 py-12">
               <Loader2
@@ -319,7 +339,7 @@ export default function TaskDetailModal({
             <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
               <dt className="text-gray-400">Model</dt>
               <dd className="text-gray-700 truncate" title={task.params.modelId}>
-                {task.params.modelId.includes("fast") ? "2.0 Fast" : "2.0"}
+                {taskModel.name}
               </dd>
 
               <dt className="text-gray-400">Mode</dt>
@@ -378,11 +398,13 @@ export default function TaskDetailModal({
                 </>
               )}
 
-              {task.usage && (
+              {usageLabel && (
                 <>
-                  <dt className="text-gray-400">Tokens</dt>
+                  <dt className="text-gray-400">
+                    {typeof task.usage?.total_tokens === "number" ? "Tokens" : "Usage"}
+                  </dt>
                   <dd className="text-gray-700">
-                    {(task.usage.total_tokens / 1000).toFixed(1)}K
+                    {usageLabel}
                   </dd>
                   {actualCost !== null && (
                     <>
@@ -461,13 +483,13 @@ export default function TaskDetailModal({
               </button>
             )}
 
-            {task.status === "queued" && (
+            {task.status === "queued" && !isAlibaba && (
               <button
                 onClick={async () => {
-                  if (!apiKey || !task.taskId) return;
+                  if (!taskApiKey || !task.taskId) return;
                   setDeleting(true);
                   try {
-                    await deleteTask(apiKey, task.taskId);
+                    await deleteTask(taskApiKey, task.taskId, task.params.modelId);
                     useAppStore
                       .getState()
                       .updateTask(task.id, { status: "cancelled" });

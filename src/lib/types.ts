@@ -15,13 +15,23 @@ export type DurationType = "seconds" | "smart";
 
 export type ModelId =
   | "dreamina-seedance-2-0-260128"
-  | "dreamina-seedance-2-0-fast-260128";
+  | "dreamina-seedance-2-0-fast-260128"
+  | "happyhorse-1.0-t2v"
+  | "happyhorse-1.0-i2v"
+  | "happyhorse-1.0-r2v";
+
+export type ModelProvider = "byteplus" | "alibaba";
+export type AlibabaHappyHorseMode = "t2v" | "i2v" | "r2v";
 
 export interface ModelOption {
   id: ModelId;
   name: string;
+  provider: ModelProvider;
   badge?: string;
+  versionLabel: string;
   supports1080p?: boolean;
+  supports480p?: boolean;
+  happyHorseMode?: AlibabaHappyHorseMode;
   pricing: {
     standard: {
       includeVideoInput: number;
@@ -38,8 +48,11 @@ export const MODELS: ModelOption[] = [
   {
     id: "dreamina-seedance-2-0-260128",
     name: "Seedance 2.0",
+    provider: "byteplus",
     badge: "Recommended",
+    versionLabel: "260128",
     supports1080p: true,
+    supports480p: true,
     pricing: {
       standard: { includeVideoInput: 4.3, excludeVideoInput: 7.0 },
       p1080: { includeVideoInput: 4.7, excludeVideoInput: 7.7 },
@@ -48,9 +61,49 @@ export const MODELS: ModelOption[] = [
   {
     id: "dreamina-seedance-2-0-fast-260128",
     name: "Seedance 2.0 Fast",
+    provider: "byteplus",
+    versionLabel: "260128",
     supports1080p: false,
+    supports480p: true,
     pricing: {
       standard: { includeVideoInput: 3.3, excludeVideoInput: 5.6 },
+    },
+  },
+  {
+    id: "happyhorse-1.0-t2v",
+    name: "HappyHorse 1.0 Text-to-video",
+    provider: "alibaba",
+    badge: "Alibaba",
+    versionLabel: "DashScope",
+    supports1080p: true,
+    supports480p: false,
+    happyHorseMode: "t2v",
+    pricing: {
+      standard: { includeVideoInput: 0, excludeVideoInput: 0 },
+    },
+  },
+  {
+    id: "happyhorse-1.0-i2v",
+    name: "HappyHorse 1.0 Image-to-video",
+    provider: "alibaba",
+    versionLabel: "DashScope",
+    supports1080p: true,
+    supports480p: false,
+    happyHorseMode: "i2v",
+    pricing: {
+      standard: { includeVideoInput: 0, excludeVideoInput: 0 },
+    },
+  },
+  {
+    id: "happyhorse-1.0-r2v",
+    name: "HappyHorse 1.0 Reference-to-video",
+    provider: "alibaba",
+    versionLabel: "DashScope",
+    supports1080p: true,
+    supports480p: false,
+    happyHorseMode: "r2v",
+    pricing: {
+      standard: { includeVideoInput: 0, excludeVideoInput: 0 },
     },
   },
 ];
@@ -79,7 +132,8 @@ export interface ReferenceAsset {
   name: string;
   role: string;
   preview?: string;
-  /** True while a video is being uploaded to BytePlus Files API. */
+  uploadProvider?: ModelProvider;
+  /** True while a local file is being uploaded to a provider file store. */
   uploading?: boolean;
 }
 
@@ -95,7 +149,16 @@ export interface GenerationTask {
   references?: ReferenceAsset[];
   createdAt: number;
   seed?: number;
-  usage?: { completion_tokens: number; total_tokens: number };
+  usage?: {
+    completion_tokens?: number;
+    total_tokens?: number;
+    duration?: number;
+    input_video_duration?: number;
+    output_video_duration?: number;
+    video_count?: number;
+    SR?: string | number;
+    ratio?: string;
+  };
   actualDuration?: number;
   actualRatio?: string;
   actualResolution?: string;
@@ -137,6 +200,41 @@ export const RATIO_ICONS: Record<AspectRatio, { w: number; h: number }> = {
   "3:4": { w: 9, h: 12 },
   "9:16": { w: 9, h: 16 },
 };
+
+export function getModelOption(modelId: ModelId): ModelOption {
+  return MODELS.find((m) => m.id === modelId) ?? MODELS[0];
+}
+
+export function isAlibabaModel(modelId: ModelId): boolean {
+  return getModelOption(modelId).provider === "alibaba";
+}
+
+export function isBytePlusModel(modelId: ModelId): boolean {
+  return getModelOption(modelId).provider === "byteplus";
+}
+
+export function isHappyHorseModel(modelId: ModelId): boolean {
+  return isAlibabaModel(modelId);
+}
+
+export function supportsAspectRatio(modelId: ModelId, ratio: AspectRatio): boolean {
+  if (isAlibabaModel(modelId)) {
+    return ["16:9", "9:16", "1:1", "4:3", "3:4"].includes(ratio);
+  }
+  return true;
+}
+
+export function supportsSmartDuration(modelId: ModelId): boolean {
+  return isBytePlusModel(modelId);
+}
+
+export function minDurationForModel(modelId: ModelId): number {
+  return isAlibabaModel(modelId) ? 3 : 4;
+}
+
+export function maxDurationForModel(_modelId: ModelId): number {
+  return 15;
+}
 
 const FRAME_RATE = 24;
 
@@ -246,7 +344,8 @@ export function tokenRatePerMillion(
   params: ModelParams,
   hasVideoRef: boolean
 ): number {
-  const model = MODELS.find((m) => m.id === params.modelId) ?? MODELS[0];
+  const model = getModelOption(params.modelId);
+  if (model.provider !== "byteplus") return 0;
   const pricing =
     params.resolution === "1080p" && model.pricing.p1080
       ? model.pricing.p1080
@@ -257,6 +356,7 @@ export function tokenRatePerMillion(
 }
 
 export function estimateCost(params: ModelParams, hasVideoRef: boolean): number {
+  if (isAlibabaModel(params.modelId)) return 0;
   const ratePerM = tokenRatePerMillion(params, hasVideoRef);
   const tokens = estimateTokens(params, hasVideoRef);
   return Math.round((tokens / 1_000_000) * ratePerM * 1000) / 1000;
@@ -272,6 +372,7 @@ export function costFromUsage(
   hasVideoRef: boolean,
   totalTokens: number
 ): number {
+  if (isAlibabaModel(params.modelId)) return 0;
   const ratePerM = tokenRatePerMillion(params, hasVideoRef);
   return Math.round((totalTokens / 1_000_000) * ratePerM * 1000) / 1000;
 }

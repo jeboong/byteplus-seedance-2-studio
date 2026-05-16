@@ -14,7 +14,13 @@ import {
   ASPECT_RATIOS,
   RATIO_ICONS,
   MODELS,
+  getModelOption,
+  isAlibabaModel,
+  minDurationForModel,
+  supportsAspectRatio,
+  supportsSmartDuration,
   type AspectRatio,
+  type ModelId,
 } from "@/lib/types";
 
 function Toggle({
@@ -59,25 +65,86 @@ function RatioIcon({ ratio }: { ratio: AspectRatio }) {
 }
 
 export default function ModelParams({ onClose }: { onClose?: () => void }) {
-  const { params, setParams, resetParams } = useAppStore();
+  const {
+    params,
+    setParams,
+    resetParams,
+  } = useAppStore();
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [modelDropdown, setModelDropdown] = useState(false);
 
-  const currentModel = MODELS.find((m) => m.id === params.modelId) ?? MODELS[0];
+  const currentModel = getModelOption(params.modelId);
+  const isAlibaba = isAlibabaModel(params.modelId);
+  const durationMin = minDurationForModel(params.modelId);
+  const canUseSmartDuration = supportsSmartDuration(params.modelId);
+  const visibleRatios = ASPECT_RATIOS.filter((r) =>
+    supportsAspectRatio(params.modelId, r.value)
+  );
+  const happyHorseModels = MODELS.filter((m) => m.provider === "alibaba");
+
+  const selectModel = (modelId: ModelId) => {
+    const model = getModelOption(modelId);
+    setParams({
+      modelId,
+      resolution:
+        (model.supports1080p === false && params.resolution === "1080p") ||
+        (model.supports480p === false && params.resolution === "480p")
+          ? "720p"
+          : params.resolution,
+      ratio: supportsAspectRatio(modelId, params.ratio)
+        ? params.ratio
+        : "16:9",
+      durationType: supportsSmartDuration(modelId)
+        ? params.durationType
+        : "seconds",
+      duration: Math.max(params.duration, minDurationForModel(modelId)),
+      mode: model.provider === "alibaba" ? "reference" : params.mode,
+    });
+  };
 
   useEffect(() => {
+    const next: Partial<typeof params> = {};
     if (params.resolution === "1080p" && currentModel.supports1080p === false) {
-      setParams({ resolution: "720p" });
+      next.resolution = "720p";
     }
-  }, [currentModel.supports1080p, params.resolution, setParams]);
+    if (params.resolution === "480p" && currentModel.supports480p === false) {
+      next.resolution = "720p";
+    }
+    if (!supportsAspectRatio(params.modelId, params.ratio)) {
+      next.ratio = "16:9";
+    }
+    if (!canUseSmartDuration && params.durationType === "smart") {
+      next.durationType = "seconds";
+    }
+    if (params.duration < durationMin) {
+      next.duration = durationMin;
+    }
+    if (isAlibaba && params.mode !== "reference") {
+      next.mode = "reference";
+    }
+    if (Object.keys(next).length > 0) setParams(next);
+  }, [
+    canUseSmartDuration,
+    currentModel.supports1080p,
+    currentModel.supports480p,
+    durationMin,
+    isAlibaba,
+    params.duration,
+    params.durationType,
+    params.mode,
+    params.modelId,
+    params.ratio,
+    params.resolution,
+    setParams,
+  ]);
 
   const randomSeed = () => {
     setParams({ seed: String(Math.floor(Math.random() * 2147483647)) });
   };
 
   return (
-    <div className="w-80 bg-white border-l border-gray-100 flex flex-col h-full overflow-y-auto scrollbar-thin">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
+    <div className="param-panel w-80 bg-white border-l border-gray-100 flex flex-col h-full overflow-y-auto scrollbar-thin">
+      <div className="param-panel-header flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
         <h2 className="text-sm font-semibold text-gray-800">Model Params</h2>
         <div className="flex items-center gap-1">
           <button
@@ -115,7 +182,11 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
                   <p className="text-xs font-medium text-gray-800">
                     {currentModel.name}
                   </p>
-                  <p className="text-[10px] text-gray-400">260128</p>
+                  <p className="text-[10px] text-gray-400">
+                    {currentModel.provider === "alibaba"
+                      ? "Alibaba ModelStudio"
+                      : "BytePlus ModelArk"}
+                  </p>
                 </div>
               </div>
               <ChevronDown className="w-4 h-4 text-gray-400" />
@@ -134,13 +205,7 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
                         params.modelId === m.id ? "bg-primary-50" : ""
                       }`}
                       onClick={() => {
-                        setParams({
-                          modelId: m.id,
-                          resolution:
-                            m.supports1080p === false && params.resolution === "1080p"
-                              ? "720p"
-                              : params.resolution,
-                        });
+                        selectModel(m.id);
                         setModelDropdown(false);
                       }}
                     >
@@ -150,7 +215,9 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
                             {m.name}
                           </p>
                           <p className="text-[10px] text-gray-400">
-                            {m.id}
+                            {m.provider === "alibaba"
+                              ? `Alibaba · ${m.id}`
+                              : m.id}
                           </p>
                         </div>
                         {m.badge && (
@@ -160,17 +227,23 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
                         )}
                       </div>
                       <div className="mt-1 flex gap-3 text-[10px] text-gray-400">
-                        <span>
-                          Video input: ${m.pricing.standard.includeVideoInput}/M
-                        </span>
-                        <span>
-                          No video: ${m.pricing.standard.excludeVideoInput}/M
-                        </span>
-                        {m.pricing.p1080 && (
-                          <span>
-                            1080p: ${m.pricing.p1080.includeVideoInput}/$
-                            {m.pricing.p1080.excludeVideoInput}/M
-                          </span>
+                        {m.provider === "alibaba" ? (
+                          <span>DashScope async · 720P/1080P · 3-15s</span>
+                        ) : (
+                          <>
+                            <span>
+                              Video input: ${m.pricing.standard.includeVideoInput}/M
+                            </span>
+                            <span>
+                              No video: ${m.pricing.standard.excludeVideoInput}/M
+                            </span>
+                            {m.pricing.p1080 && (
+                              <span>
+                                1080p: ${m.pricing.p1080.includeVideoInput}/$
+                                {m.pricing.p1080.excludeVideoInput}/M
+                              </span>
+                            )}
+                          </>
                         )}
                       </div>
                     </button>
@@ -182,16 +255,17 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
         </section>
 
         {/* Mode */}
+        {!isAlibaba ? (
         <section>
           <label className="block text-xs font-medium text-gray-500 mb-2">
             Mode
           </label>
-          <div className="grid grid-cols-2 gap-1 bg-surface-100 rounded-xl p-1">
+          <div className="param-segmented grid grid-cols-2 gap-1 bg-surface-100 rounded-xl p-1">
             <button
               onClick={() => setParams({ mode: "reference" })}
-              className={`py-2 rounded-lg text-xs font-medium transition-all ${
+              className={`param-option py-2 rounded-lg text-xs font-medium transition-all ${
                 params.mode === "reference"
-                  ? "bg-white text-gray-800 shadow-sm"
+                  ? "param-choice-selected bg-white text-gray-800 shadow-sm"
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
@@ -199,9 +273,9 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
             </button>
             <button
               onClick={() => setParams({ mode: "first_last_frame" })}
-              className={`py-2 rounded-lg text-xs font-medium transition-all ${
+              className={`param-option py-2 rounded-lg text-xs font-medium transition-all ${
                 params.mode === "first_last_frame"
-                  ? "bg-white text-gray-800 shadow-sm"
+                  ? "param-choice-selected bg-white text-gray-800 shadow-sm"
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
@@ -209,20 +283,47 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
             </button>
           </div>
         </section>
+        ) : (
+          <section>
+            <label className="block text-xs font-medium text-gray-500 mb-2">
+              HappyHorse Mode
+            </label>
+            <div className="param-segmented grid grid-cols-3 gap-1 bg-surface-100 rounded-xl p-1">
+              {happyHorseModels.map((model) => (
+                <button
+                  key={model.id}
+                  onClick={() => selectModel(model.id)}
+                  className={`param-option py-2 rounded-lg text-[11px] font-medium transition-all ${
+                    params.modelId === model.id
+                      ? "param-choice-selected bg-white text-gray-800 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  {model.happyHorseMode === "t2v"
+                    ? "Text"
+                    : model.happyHorseMode === "i2v"
+                    ? "Image"
+                    : "Reference"}
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Aspect Ratio */}
+        {currentModel.happyHorseMode !== "i2v" && (
         <section>
           <label className="block text-xs font-medium text-gray-500 mb-2">
             Aspect Ratio
           </label>
           <div className="grid grid-cols-3 gap-1.5">
-            {ASPECT_RATIOS.map((r) => (
+            {visibleRatios.map((r) => (
               <button
                 key={r.value}
                 onClick={() => setParams({ ratio: r.value })}
-                className={`flex items-center justify-center gap-1 py-2 rounded-xl text-xs font-medium border transition-all ${
+                className={`param-option flex items-center justify-center gap-1 py-2 rounded-xl text-xs font-medium border transition-all ${
                   params.ratio === r.value
-                    ? "border-primary-400 bg-primary-50 text-primary-700"
+                    ? "param-choice-selected border-primary-400 bg-primary-50 text-primary-700"
                     : "border-gray-200 text-gray-600 hover:border-gray-300"
                 }`}
               >
@@ -232,16 +333,18 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
             ))}
           </div>
         </section>
+        )}
 
         {/* Resolution */}
         <section>
           <label className="block text-xs font-medium text-gray-500 mb-2">
             Resolution
           </label>
-          <div className="grid grid-cols-3 gap-1 bg-surface-100 rounded-xl p-1">
+          <div className="param-segmented grid grid-cols-3 gap-1 bg-surface-100 rounded-xl p-1">
             {(["480p", "720p", "1080p"] as const).map((res) => {
               const disabled =
-                res === "1080p" && currentModel.supports1080p === false;
+                (res === "1080p" && currentModel.supports1080p === false) ||
+                (res === "480p" && currentModel.supports480p === false);
               return (
                 <button
                   key={res}
@@ -249,15 +352,15 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
                     if (!disabled) setParams({ resolution: res });
                   }}
                   disabled={disabled}
-                  title={disabled ? "Fast 모델은 1080p 출력을 지원하지 않습니다." : res}
-                  className={`relative py-2 rounded-lg text-xs font-medium transition-all ${
+                  title={disabled ? "현재 모델에서 지원하지 않는 해상도입니다." : res}
+                  className={`param-option relative py-2 rounded-lg text-xs font-medium transition-all ${
                     params.resolution === res
-                      ? "bg-white text-gray-800 shadow-sm"
+                      ? "param-choice-selected bg-white text-gray-800 shadow-sm"
                       : "text-gray-500 hover:text-gray-700"
                   } ${disabled ? "opacity-40 cursor-not-allowed hover:text-gray-500" : ""}`}
                 >
                   {res}
-                  {res === "1080p" && (
+                  {res === "1080p" && currentModel.provider === "byteplus" && (
                     <span className="absolute -top-1 -right-1 bg-amber-400 text-white text-[8px] font-bold px-1 rounded-full">
                       BETA
                     </span>
@@ -266,12 +369,12 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
               );
             })}
           </div>
-          {params.mode === "first_last_frame" && (
+          {params.mode === "first_last_frame" && !isAlibaba && (
             <p className="text-[11px] text-blue-600 mt-1.5">
               ℹ First/Last Frame 모드: 출력 dimension은 (resolution × ratio) 조합으로 결정되며, 입력 이미지가 자동 크롭됩니다. Ratio는 <code className="bg-blue-50 px-1 rounded">Auto</code> 권장 (첫 프레임 비율 채택).
             </p>
           )}
-          {params.resolution === "1080p" && (
+          {params.resolution === "1080p" && currentModel.provider === "byteplus" && (
             <p className="text-[11px] text-amber-600 mt-1.5">
               ⚠ 1080p는 공식 문서에 미기재된 실험 옵션입니다. API가 거부하면
               720p로 전환하세요.
@@ -284,12 +387,12 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
           <label className="block text-xs font-medium text-gray-500 mb-2">
             Video Duration
           </label>
-          <div className="grid grid-cols-2 gap-1 bg-surface-100 rounded-xl p-1 mb-3">
+          <div className="param-segmented grid grid-cols-2 gap-1 bg-surface-100 rounded-xl p-1 mb-3">
             <button
               onClick={() => setParams({ durationType: "seconds" })}
-              className={`py-2 rounded-lg text-xs font-medium transition-all ${
+              className={`param-option py-2 rounded-lg text-xs font-medium transition-all ${
                 params.durationType === "seconds"
-                  ? "bg-white text-gray-800 shadow-sm"
+                  ? "param-choice-selected bg-white text-gray-800 shadow-sm"
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
@@ -297,11 +400,12 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
             </button>
             <button
               onClick={() => setParams({ durationType: "smart" })}
-              className={`py-2 rounded-lg text-xs font-medium transition-all ${
+              disabled={!canUseSmartDuration}
+              className={`param-option py-2 rounded-lg text-xs font-medium transition-all ${
                 params.durationType === "smart"
-                  ? "bg-white text-gray-800 shadow-sm"
+                  ? "param-choice-selected bg-white text-gray-800 shadow-sm"
                   : "text-gray-500 hover:text-gray-700"
-              }`}
+              } ${!canUseSmartDuration ? "opacity-40 cursor-not-allowed hover:text-gray-500" : ""}`}
             >
               Smart length
             </button>
@@ -310,7 +414,7 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
             <div className="flex items-center gap-3">
               <input
                 type="range"
-                min={4}
+                min={durationMin}
                 max={15}
                 step={1}
                 value={params.duration}
@@ -357,13 +461,15 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
 
         {/* Toggles */}
         <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-700">Audio Output</span>
-            <Toggle
-              checked={params.generateAudio}
-              onChange={(v) => setParams({ generateAudio: v })}
-            />
-          </div>
+          {!isAlibaba && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-700">Audio Output</span>
+              <Toggle
+                checked={params.generateAudio}
+                onChange={(v) => setParams({ generateAudio: v })}
+              />
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-700">Watermark</span>
             <Toggle
@@ -371,6 +477,7 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
               onChange={(v) => setParams({ watermark: v })}
             />
           </div>
+          {!isAlibaba && (
           <div className="flex items-center justify-between">
             <div>
               <span className="text-sm text-gray-700">Return Last Frame</span>
@@ -383,6 +490,7 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
               onChange={(v) => setParams({ returnLastFrame: v })}
             />
           </div>
+          )}
         </section>
 
         <hr className="border-gray-100" />
@@ -429,7 +537,7 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
           </button>
           {advancedOpen && (
             <div className="mt-4 space-y-4">
-              {/* Generation Timeout */}
+              {!isAlibaba && (
               <div>
                 <label className="block text-sm text-gray-700 mb-2">
                   Generation timeout
@@ -456,6 +564,12 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
                   </div>
                 </div>
               </div>
+              )}
+              {isAlibaba && (
+                <p className="text-[11px] text-gray-400">
+                  HappyHorse 작업 조회 ID와 결과 URL은 문서 기준 24시간 동안 유효합니다.
+                </p>
+              )}
             </div>
           )}
         </section>

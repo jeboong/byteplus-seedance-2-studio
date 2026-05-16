@@ -2,7 +2,7 @@
 
 import { Video, Settings, LogOut, ChevronDown } from "lucide-react";
 import { useAppStore } from "@/lib/store";
-import { MODELS } from "@/lib/types";
+import { getModelOption } from "@/lib/types";
 import ThemeToggle from "./ThemeToggle";
 
 export default function Header({
@@ -12,10 +12,11 @@ export default function Header({
   onToggleParams: () => void;
   paramsOpen: boolean;
 }) {
-  const { apiKey, clearApiKey, params } = useAppStore();
-  const masked = apiKey ? `...${apiKey.slice(-6)}` : "";
-  const currentModel =
-    MODELS.find((m) => m.id === params.modelId) ?? MODELS[0];
+  const { apiKey, alibabaApiKey, clearApiKey, params } = useAppStore();
+  const currentModel = getModelOption(params.modelId);
+  const activeKey =
+    currentModel.provider === "alibaba" ? alibabaApiKey : apiKey;
+  const masked = activeKey ? `...${activeKey.slice(-6)}` : "";
 
   return (
     <header className="h-14 border-b border-gray-100 bg-white flex items-center justify-between px-5 shrink-0">
@@ -29,7 +30,7 @@ export default function Header({
               {currentModel.name}
             </span>
             <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
-              260128
+              {currentModel.versionLabel}
             </span>
             <ChevronDown className="w-3 h-3 text-gray-400" />
           </div>

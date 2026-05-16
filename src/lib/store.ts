@@ -52,6 +52,8 @@ function persistTasks(tasks: GenerationTask[]) {
 interface AppState {
   apiKey: string | null;
   setApiKey: (key: string) => void;
+  alibabaApiKey: string | null;
+  setAlibabaApiKey: (key: string) => void;
   clearApiKey: () => void;
 
   params: ModelParams;
@@ -64,6 +66,7 @@ interface AppState {
   references: ReferenceAsset[];
   addReference: (ref: ReferenceAsset) => void;
   updateReference: (id: string, update: Partial<ReferenceAsset>) => void;
+  reorderReference: (dragId: string, targetId: string) => void;
   removeReference: (id: string) => void;
   clearReferences: () => void;
 
@@ -88,11 +91,19 @@ export const useAppStore = create<AppState>((set) => ({
     }
     set({ apiKey: key });
   },
+  alibabaApiKey: null,
+  setAlibabaApiKey: (key) => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("alibaba_modelstudio_api_key", key);
+    }
+    set({ alibabaApiKey: key });
+  },
   clearApiKey: () => {
     if (typeof window !== "undefined") {
       localStorage.removeItem("ark_api_key");
+      localStorage.removeItem("alibaba_modelstudio_api_key");
     }
-    set({ apiKey: null });
+    set({ apiKey: null, alibabaApiKey: null });
   },
 
   params: DEFAULT_PARAMS,
@@ -112,6 +123,17 @@ export const useAppStore = create<AppState>((set) => ({
         r.id === id ? { ...r, ...update } : r
       ),
     })),
+  reorderReference: (dragId, targetId) =>
+    set((s) => {
+      if (dragId === targetId) return s;
+      const from = s.references.findIndex((r) => r.id === dragId);
+      const to = s.references.findIndex((r) => r.id === targetId);
+      if (from < 0 || to < 0) return s;
+      const next = [...s.references];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return { references: next };
+    }),
   removeReference: (id) =>
     set((s) => ({ references: s.references.filter((r) => r.id !== id) })),
   clearReferences: () => set({ references: [] }),

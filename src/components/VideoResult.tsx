@@ -27,14 +27,30 @@ import { useAppStore } from "@/lib/store";
 import { deleteTask } from "@/lib/api";
 import { getRefTags } from "@/lib/refTags";
 import { downloadCrossOrigin, isUrlExpired } from "@/lib/downloadVideo";
-import { costFromUsage } from "@/lib/types";
+import { costFromUsage, getModelOption, isAlibabaModel } from "@/lib/types";
 import type { GenerationTask, ReferenceAsset } from "@/lib/types";
+import GenerationFX from "./GenerationFX";
 import TaskDetailModal from "./TaskDetailModal";
 
 type ViewMode = "list" | "grid";
 
 function taskHasVideoInput(task: GenerationTask): boolean {
   return task.references?.some((r) => r.type === "video") ?? false;
+}
+
+function getUsageLabel(task: GenerationTask): string | null {
+  if (!task.usage) return null;
+  if (typeof task.usage.total_tokens === "number") {
+    return `${(task.usage.total_tokens / 1000).toFixed(1)}K tokens`;
+  }
+  const duration = task.usage.output_video_duration ?? task.usage.duration;
+  const sr = task.usage.SR;
+  const parts = [
+    typeof duration === "number" ? `${duration}s` : null,
+    sr ? `${sr}P` : null,
+    task.usage.ratio,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 function cssAspectRatio(ratio?: string): string {
@@ -215,31 +231,20 @@ function HoverVideo({
 
 function GenerationState({
   label,
+  modelLabel,
   compact,
 }: {
   label: string;
+  modelLabel: string;
   compact?: boolean;
 }) {
   return (
-    <div
-      className={`generation-aura flex flex-col items-center justify-center gap-3 flex-shrink-0 ${
-        compact ? "h-36" : "h-52"
-      }`}
-    >
-      <div className="generation-core" />
-      <div className="text-center">
-        <span
-          className={`block font-semibold text-primary-700 ${
-            compact ? "text-[11px]" : "text-sm"
-          }`}
-        >
-          {label}
-        </span>
-        <span className="block text-[10px] text-gray-400 mt-0.5">
-          Seedance 2.0
-        </span>
-      </div>
-    </div>
+    <GenerationFX
+      label={label}
+      modelLabel={modelLabel}
+      compact={compact}
+      className={`flex-shrink-0 ${compact ? "h-36" : "h-52"}`}
+    />
   );
 }
 
@@ -252,7 +257,7 @@ function TaskCard({
   compact?: boolean;
   onOpenDetail: () => void;
 }) {
-  const { apiKey, removeTask, loadFromTask } = useAppStore();
+  const { apiKey, alibabaApiKey, removeTask, loadFromTask } = useAppStore();
   const [copiedSeed, setCopiedSeed] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -345,40 +350,44 @@ function TaskCard({
   const canDelete = ["succeeded", "failed", "cancelled", "expired"].includes(
     task.status
   );
-  const canCancel = task.status === "queued";
+  const isAlibaba = isAlibabaModel(task.params.modelId);
+  const taskApiKey = isAlibaba ? alibabaApiKey : apiKey;
+  const canCancel = task.status === "queued" && !isAlibaba;
   const isGenerating = ["pending", "queued", "running"].includes(task.status);
   const hasVideoInput = taskHasVideoInput(task);
+  const taskModel = getModelOption(task.params.modelId);
   const actualCost =
-    task.usage && task.usage.total_tokens > 0
+    typeof task.usage?.total_tokens === "number" && task.usage.total_tokens > 0
       ? costFromUsage(task.params, hasVideoInput, task.usage.total_tokens)
       : null;
+  const usageLabel = getUsageLabel(task);
 
   const handleDelete = useCallback(async () => {
-    if (!apiKey || !task.taskId) {
+    if (!taskApiKey || !task.taskId) {
       removeTask(task.id);
       return;
     }
     setDeleting(true);
     try {
-      await deleteTask(apiKey, task.taskId);
+      await deleteTask(taskApiKey, task.taskId, task.params.modelId);
     } catch {
       /* ignore — still remove locally */
     }
     removeTask(task.id);
     setDeleting(false);
-  }, [apiKey, task.taskId, task.id, removeTask]);
+  }, [taskApiKey, task.taskId, task.id, task.params.modelId, removeTask]);
 
   const handleCancel = useCallback(async () => {
-    if (!apiKey || !task.taskId) return;
+    if (!taskApiKey || !task.taskId) return;
     setDeleting(true);
     try {
-      await deleteTask(apiKey, task.taskId);
+      await deleteTask(taskApiKey, task.taskId, task.params.modelId);
       useAppStore.getState().updateTask(task.id, { status: "cancelled" });
     } catch {
       /* ignore */
     }
     setDeleting(false);
-  }, [apiKey, task.taskId, task.id]);
+  }, [taskApiKey, task.taskId, task.id, task.params.modelId]);
 
   const copySeed = () => {
     if (task.seed !== undefined) {
@@ -389,7 +398,7 @@ function TaskCard({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm h-full flex flex-col">
+    <div className="task-card bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm h-full flex flex-col">
       {isFinished && task.videoUrl ? (
         <div className="bg-black overflow-hidden flex-shrink-0 relative group">
           <HoverVideo
@@ -402,7 +411,7 @@ function TaskCard({
           </div>
         </div>
       ) : isGenerating ? (
-        <GenerationState compact={compact} label={cfg.label} />
+        <GenerationState compact={compact} label={cfg.label} modelLabel={taskModel.name} />
       ) : (
         <div
           className={`${cfg.bg} flex flex-col items-center justify-center gap-2 flex-shrink-0 ${
@@ -500,10 +509,10 @@ function TaskCard({
                 </button>
               </>
             )}
-            {task.usage && !compact && (
+            {usageLabel && !compact && (
               <>
                 <span>·</span>
-                <span>{(task.usage.total_tokens / 1000).toFixed(1)}K tokens</span>
+                <span>{usageLabel}</span>
                 {actualCost !== null && (
                   <>
                     <span>·</span>

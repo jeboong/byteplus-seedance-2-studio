@@ -19,8 +19,26 @@ interface ControlPlaneResult {
   Result?: Record<string, unknown>;
 }
 
+type AssetType = "Image" | "Video" | "Audio";
+
 function asResult(data: Record<string, unknown>): ControlPlaneResult {
   return data as unknown as ControlPlaneResult;
+}
+
+function inferAssetType(file: File): AssetType {
+  if (file.type.startsWith("video/")) return "Video";
+  if (file.type.startsWith("audio/")) return "Audio";
+  return "Image";
+}
+
+function normalizeAssetType(value: unknown, file?: File): AssetType {
+  if (typeof value === "string") {
+    const normalized = value.toLowerCase();
+    if (normalized === "image") return "Image";
+    if (normalized === "video") return "Video";
+    if (normalized === "audio") return "Audio";
+  }
+  return file ? inferAssetType(file) : "Image";
 }
 
 async function uploadToFilesAPI(apiKey: string, file: File): Promise<string> {
@@ -137,6 +155,7 @@ export async function POST(req: NextRequest) {
       const apiKey = formData.get("apiKey") as string | null;
       const groupId = formData.get("groupId") as string | null;
       const name = formData.get("name") as string | null;
+      const assetType = normalizeAssetType(formData.get("assetType"), file ?? undefined);
 
       if (!file || !apiKey) {
         return NextResponse.json(
@@ -157,13 +176,21 @@ export async function POST(req: NextRequest) {
 
       const downloadUrl = await getFileDownloadUrl(apiKey, fileId);
 
-      const assetUrl =
-        downloadUrl ||
-        `https://ark.ap-southeast.bytepluses.com/api/v3/files/${fileId}/content`;
+      if (!downloadUrl) {
+        return NextResponse.json(
+          {
+            error:
+              "CreateAsset는 BytePlus가 접근 가능한 공개 URL이 필요합니다. Files API content endpoint는 인증이 필요할 수 있어 Asset 등록에 쓸 수 없습니다. 공개 HTTPS URL 또는 콘솔에서 만든 asset://를 사용하세요.",
+            fileId,
+          },
+          { status: 502 }
+        );
+      }
 
       const { status, data } = await callControlPlaneAPI("CreateAsset", {
         GroupId: groupId,
-        URL: assetUrl,
+        URL: downloadUrl,
+        AssetType: assetType,
         Name: name || file.name,
       });
 
@@ -207,9 +234,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "create_asset") {
+      const assetType = normalizeAssetType(params.AssetType ?? params.assetType);
+      const assetParams = {
+        ...params,
+        AssetType: assetType,
+      };
+      delete (assetParams as Record<string, unknown>).assetType;
       const { status, data } = await callControlPlaneAPI(
         "CreateAsset",
-        params
+        assetParams
       );
       const result = asResult(data);
       if (result.ResponseMetadata.Error) {

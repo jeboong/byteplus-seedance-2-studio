@@ -6,21 +6,25 @@ import { useAppStore } from "@/lib/store";
 
 export default function Onboarding() {
   const setApiKey = useAppStore((s) => s.setApiKey);
+  const setAlibabaApiKey = useAppStore((s) => s.setAlibabaApiKey);
   const [key, setKey] = useState("");
+  const [alibabaKey, setAlibabaKey] = useState("");
   const [error, setError] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = key.trim();
-    if (!trimmed) {
-      setError("API Key를 입력해주세요.");
+    const trimmedAlibaba = alibabaKey.trim();
+    if (!trimmed && !trimmedAlibaba) {
+      setError("BytePlus 또는 Alibaba ModelStudio API Key 중 하나를 입력해주세요.");
       return;
     }
-    if (trimmed.length < 10) {
+    if ((trimmed && trimmed.length < 10) || (trimmedAlibaba && trimmedAlibaba.length < 10)) {
       setError("유효한 API Key를 입력해주세요.");
       return;
     }
-    setApiKey(trimmed);
+    if (trimmed) setApiKey(trimmed);
+    if (trimmedAlibaba) setAlibabaApiKey(trimmedAlibaba);
   };
 
   return (
@@ -45,8 +49,8 @@ export default function Onboarding() {
           </div>
 
           <p className="text-sm text-gray-500 mb-6">
-            BytePlus Ark API Key를 입력하여 Seedance 2.0 비디오 생성 모델에
-            접근하세요. API Key는 브라우저에만 저장되며 외부로 전송되지 않습니다.
+            BytePlus Ark 또는 Alibaba ModelStudio API Key를 입력하세요.
+            키는 브라우저에만 저장되고 API 호출 시 서버 프록시로만 전달됩니다.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -67,7 +71,20 @@ export default function Onboarding() {
                     setKey(e.target.value);
                     setError("");
                   }}
-                  placeholder="BytePlus Ark API Key 입력"
+                  placeholder="BytePlus Ark API Key"
+                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
+                />
+              </div>
+              <div className="relative mt-2">
+                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="password"
+                  value={alibabaKey}
+                  onChange={(e) => {
+                    setAlibabaKey(e.target.value);
+                    setError("");
+                  }}
+                  placeholder="Alibaba ModelStudio API Key"
                   className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
                 />
               </div>
@@ -88,10 +105,10 @@ export default function Onboarding() {
           <div className="mt-6 p-4 bg-surface-50 rounded-xl">
             <p className="text-xs text-gray-400 leading-relaxed">
               <span className="font-medium text-gray-500">지원 모델:</span>{" "}
-              Seedance 2.0 (dreamina-seedance-2-0-260128)
+              Seedance 2.0 / HappyHorse 1.0
               <br />
-              <span className="font-medium text-gray-500">Fast 모델:</span>{" "}
-              Seedance 2.0 Fast (dreamina-seedance-2-0-fast-260128)
+              <span className="font-medium text-gray-500">Alibaba:</span>{" "}
+              happyhorse-1.0-t2v / i2v / r2v
               <br />
               <span className="font-medium text-gray-500">해상도:</span> 480p,
               720p
@@ -108,7 +125,7 @@ export default function Onboarding() {
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">
-          Powered by BytePlus ModelArk &middot; Seedance 2.0
+          Powered by BytePlus ModelArk &middot; Alibaba ModelStudio
         </p>
       </div>
     </div>

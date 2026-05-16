@@ -19,9 +19,14 @@ import {
   Trash2,
   CheckCircle2,
   Library,
+  HelpCircle,
 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
-import type { ReferenceAsset } from "@/lib/types";
+import {
+  getModelOption,
+  isAlibabaModel,
+  type ReferenceAsset,
+} from "@/lib/types";
 import {
   listAssetGroups,
   createAssetGroup,
@@ -60,12 +65,28 @@ function detectUrlType(url: string): { type: "image" | "video" | "audio"; role: 
   return { type: "image", role: "reference_image" };
 }
 
+function isAlibabaMediaUrl(url: string): boolean {
+  return /^(https?:\/\/|oss:\/\/)/i.test(url);
+}
+
 function AssetCard({
   asset,
   tag,
+  dragging,
+  dragOver,
+  onDragStart,
+  onDragEnter,
+  onDrop,
+  onDragEnd,
 }: {
   asset: ReferenceAsset;
   tag?: string;
+  dragging?: boolean;
+  dragOver?: boolean;
+  onDragStart?: (id: string, e: React.DragEvent<HTMLDivElement>) => void;
+  onDragEnter?: (id: string, e: React.DragEvent<HTMLDivElement>) => void;
+  onDrop?: (id: string, e: React.DragEvent<HTMLDivElement>) => void;
+  onDragEnd?: () => void;
 }) {
   const removeReference = useAppStore((s) => s.removeReference);
   const insertTag = usePromptInsert();
@@ -73,7 +94,28 @@ function AssetCard({
   const uploading = !!asset.uploading;
 
   return (
-    <div className="group relative bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+    <div
+      draggable={!uploading}
+      onDragStart={(e) => onDragStart?.(asset.id, e)}
+      onDragEnter={(e) => onDragEnter?.(asset.id, e)}
+      onDragOver={(e) => {
+        if (uploading) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+      }}
+      onDrop={(e) => onDrop?.(asset.id, e)}
+      onDragEnd={onDragEnd}
+      className={`group relative bg-gray-50 rounded-lg border overflow-hidden transition-all duration-150 ${
+        uploading ? "" : "cursor-grab active:cursor-grabbing"
+      } ${
+        dragging
+          ? "opacity-45 scale-95 border-primary-300"
+          : dragOver
+          ? "border-primary-400 ring-2 ring-primary-100 scale-[1.03]"
+          : "border-gray-200"
+      }`}
+      title={tag ? `${tag} · 드래그해서 순서 변경` : "드래그해서 순서 변경"}
+    >
       <div className="aspect-square flex items-center justify-center bg-gray-100 w-16 h-16">
         {uploading ? (
           <Loader2 className="w-5 h-5 text-primary-500 animate-spin" />
@@ -81,6 +123,7 @@ function AssetCard({
           <img
             src={asset.preview || asset.url}
             alt={asset.name}
+            draggable={false}
             className="w-full h-full object-cover"
           />
         ) : isAssetUri ? (
@@ -100,6 +143,7 @@ function AssetCard({
             e.stopPropagation();
             insertTag(` ${tag} `);
           }}
+          onMouseDown={(e) => e.stopPropagation()}
           className="absolute top-0 left-0 bg-primary-500/90 text-white text-[9px] font-bold px-1 py-0.5 leading-none rounded-br hover:bg-primary-600 transition-colors"
           title={`프롬프트에 ${tag} 삽입 (BytePlus는 [Image N] 형식으로 자동 변환)`}
         >
@@ -112,7 +156,11 @@ function AssetCard({
         </div>
       )}
       <button
-        onClick={() => removeReference(asset.id)}
+        onClick={(e) => {
+          e.stopPropagation();
+          removeReference(asset.id);
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
         className="absolute top-0.5 right-0.5 p-0.5 bg-black/60 hover:bg-black/80 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
         title="제거"
       >
@@ -369,12 +417,18 @@ function AssetManagerDialog({
       let result;
 
       if (uploadFile && apiKey) {
-        result = await createAssetFromFile(apiKey, selectedGroup, uploadFile);
+        result = await createAssetFromFile(
+          apiKey,
+          selectedGroup,
+          uploadFile,
+          assetType
+        );
       } else if (uploadUrl.trim()) {
         result = await createAssetFromUrl(
           selectedGroup,
           uploadUrl.trim(),
-          uploadName.trim() || "asset"
+          uploadName.trim() || "asset",
+          assetType
         );
       } else {
         setUploadError("파일 또는 URL을 입력하세요.");
@@ -535,7 +589,7 @@ function AssetManagerDialog({
               {/* Upload source */}
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">
-                  이미지 소스
+                  자산 소스
                 </label>
                 <div className="space-y-2">
                   <div
@@ -565,7 +619,7 @@ function AssetManagerDialog({
                       <>
                         <Upload className="w-5 h-5 text-gray-400 mb-1" />
                         <span className="text-[10px] text-gray-400">
-                          로컬 파일 선택 (이미지/비디오)
+                          로컬 파일 선택 (이미지/비디오/오디오)
                         </span>
                       </>
                     )}
@@ -573,7 +627,7 @@ function AssetManagerDialog({
                   <input
                     ref={fileRef}
                     type="file"
-                    accept="image/*,video/*"
+                    accept="image/*,video/*,audio/*"
                     className="hidden"
                     onChange={(e) => {
                       const f = e.target.files?.[0];
@@ -595,7 +649,7 @@ function AssetManagerDialog({
                       setUploadUrl(e.target.value);
                       if (e.target.value) setUploadFile(null);
                     }}
-                    placeholder="공개 이미지 URL (https://...)"
+                    placeholder="공개 URL (https://...)"
                     className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
                   />
                 </div>
@@ -750,32 +804,70 @@ function AssetManagerDialog({
 }
 
 function ReferenceMode() {
-  const { references, addReference } = useAppStore();
+  const {
+    references,
+    addReference,
+    removeReference,
+    reorderReference,
+    params,
+  } = useAppStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [assetDialogOpen, setAssetDialogOpen] = useState(false);
+  const [draggedRefId, setDraggedRefId] = useState<string | null>(null);
+  const [dragOverRefId, setDragOverRefId] = useState<string | null>(null);
   const { upload, error: uploadError, clearError } = useFileUpload();
 
   const tags = useMemo(() => getRefTags(references), [references]);
+  const currentModel = getModelOption(params.modelId);
+  const isAlibaba = isAlibabaModel(params.modelId);
+  const happyHorseMode = currentModel.happyHorseMode;
+  const allowAttachments = !isAlibaba || happyHorseMode !== "t2v";
 
   const handleUrlAdd = useCallback(() => {
     const url = window.prompt(
-      "이미지/비디오/오디오의 공개 URL을 입력하세요:\n\n예시:\n• 이미지: https://example.com/photo.jpg\n• 비디오: https://example.com/clip.mp4\n• 오디오: https://example.com/sound.mp3\n• Asset: asset://asset-20260410114236-xxxxx"
+      isAlibaba
+        ? "HappyHorse에 사용할 이미지 URL을 입력하세요:\n\n지원: JPEG/JPG/PNG/BMP/WEBP · HTTP(S) 또는 oss:// URL\nI2V: 정확히 1개 · R2V: 1~9개"
+        : "이미지/비디오/오디오의 공개 URL을 입력하세요:\n\n예시:\n• 이미지: https://example.com/photo.jpg\n• 비디오: https://example.com/clip.mp4\n• 오디오: https://example.com/sound.mp3\n• Asset: asset://asset-20260410114236-xxxxx"
     );
     if (!url) return;
 
-    const { type, role } = detectUrlType(url.trim());
+    const trimmed = url.trim();
+    if (isAlibaba && !isAlibabaMediaUrl(trimmed)) {
+      window.alert("HappyHorse는 HTTP(S) 또는 ModelStudio 임시 oss:// 이미지 URL만 지원합니다.");
+      return;
+    }
+    if (isAlibaba && happyHorseMode === "r2v" && references.length >= 9) {
+      window.alert("HappyHorse R2V는 레퍼런스 이미지 최대 9개까지 지원합니다.");
+      return;
+    }
+    if (isAlibaba && happyHorseMode === "i2v") {
+      references.forEach((ref) => removeReference(ref.id));
+    }
+
+    const { type, role } = isAlibaba
+      ? {
+          type: "image" as const,
+          role: happyHorseMode === "i2v" ? "first_frame" : "reference_image",
+        }
+      : detectUrlType(trimmed);
 
     addReference({
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       type,
-      url: url.trim(),
-      name: url.trim().startsWith("asset://")
-        ? url.trim().replace("asset://", "")
-        : url.split("/").pop() || "asset",
+      url: trimmed,
+      name: trimmed.startsWith("asset://")
+        ? trimmed.replace("asset://", "")
+        : trimmed.split("/").pop() || "asset",
       role,
-      preview: type === "image" && !url.trim().startsWith("asset://") ? url.trim() : undefined,
+      preview: type === "image" && !trimmed.startsWith("asset://") ? trimmed : undefined,
     });
-  }, [addReference]);
+  }, [
+    addReference,
+    happyHorseMode,
+    isAlibaba,
+    references,
+    removeReference,
+  ]);
 
   const handleAssetUriSubmit = useCallback(
     (uri: string, type: "image" | "video" | "audio") => {
@@ -791,44 +883,117 @@ function ReferenceMode() {
     [addReference]
   );
 
+  const handleRefDragStart = useCallback(
+    (id: string, e: React.DragEvent<HTMLDivElement>) => {
+      setDraggedRefId(id);
+      setDragOverRefId(null);
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("application/x-reference-id", id);
+      e.dataTransfer.setData("text/plain", id);
+    },
+    []
+  );
+
+  const handleRefDragEnter = useCallback(
+    (id: string, e: React.DragEvent<HTMLDivElement>) => {
+      if (!draggedRefId || draggedRefId === id) return;
+      e.preventDefault();
+      setDragOverRefId(id);
+    },
+    [draggedRefId]
+  );
+
+  const handleRefDrop = useCallback(
+    (targetId: string, e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      const sourceId =
+        e.dataTransfer.getData("application/x-reference-id") || draggedRefId;
+      if (sourceId && sourceId !== targetId) {
+        reorderReference(sourceId, targetId);
+      }
+      setDraggedRefId(null);
+      setDragOverRefId(null);
+    },
+    [draggedRefId, reorderReference]
+  );
+
+  const clearRefDrag = useCallback(() => {
+    setDraggedRefId(null);
+    setDragOverRefId(null);
+  }, []);
+
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 flex-wrap">
         {references.map((ref) => (
-          <AssetCard key={ref.id} asset={ref} tag={tags[ref.id]} />
+          <AssetCard
+            key={ref.id}
+            asset={ref}
+            tag={tags[ref.id]}
+            dragging={draggedRefId === ref.id}
+            dragOver={dragOverRefId === ref.id}
+            onDragStart={handleRefDragStart}
+            onDragEnter={handleRefDragEnter}
+            onDrop={handleRefDrop}
+            onDragEnd={clearRefDrag}
+          />
         ))}
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={references.length >= 12}
-          className="w-16 h-16 border border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 hover:bg-primary-50/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-          title="로컬 파일 첨부 (이미지 ≤30MB / 비디오 ≤50MB / 오디오 ≤15MB) — 또는 입력창에 드래그&드롭, Ctrl+V로 붙여넣기"
-        >
-          <Plus className="w-4 h-4 text-gray-400" />
-          <span className="text-[9px] text-gray-400 mt-0.5">파일</span>
-        </button>
-        <button
-          onClick={handleUrlAdd}
-          className="w-16 h-16 border border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 hover:bg-primary-50/30 transition-all shrink-0"
-          title="공개 URL 입력 (이미지/비디오/오디오)"
-        >
-          <Link2 className="w-4 h-4 text-gray-400" />
-          <span className="text-[9px] text-gray-400 mt-0.5">URL</span>
-        </button>
-        <button
-          onClick={() => setAssetDialogOpen(true)}
-          className="w-16 h-16 border border-dashed border-green-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-green-400 hover:bg-green-50/50 transition-all shrink-0"
-          title="실사 인물 Asset URI 입력 (콘솔에서 등록한 asset://)"
-        >
-          <UserCheck className="w-4 h-4 text-green-500" />
-          <span className="text-[8px] text-green-500 mt-0.5 leading-tight text-center">
-            asset://
-          </span>
-        </button>
+        {allowAttachments && (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={
+              isAlibaba
+                ? happyHorseMode === "i2v"
+                  ? references.filter((r) => r.type === "image").length >= 1
+                  : references.filter((r) => r.type === "image").length >= 9
+                : references.length >= 12
+            }
+            className="w-16 h-16 border border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 hover:bg-primary-50/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+            title={
+              isAlibaba
+                ? "HappyHorse 로컬 이미지 첨부 (JPEG/JPG/PNG/BMP/WEBP, 10MB 이하)"
+                : "로컬 파일 첨부 (이미지 ≤30MB / 비디오 ≤50MB / 오디오 ≤15MB) — 또는 입력창에 드래그&드롭, Ctrl+V로 붙여넣기"
+            }
+          >
+            <Plus className="w-4 h-4 text-gray-400" />
+            <span className="text-[9px] text-gray-400 mt-0.5">파일</span>
+          </button>
+        )}
+        {allowAttachments && (
+          <button
+            onClick={handleUrlAdd}
+            className="w-16 h-16 border border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 hover:bg-primary-50/30 transition-all shrink-0"
+            title={
+              isAlibaba
+                ? "HTTP(S) 또는 oss:// 이미지 URL 입력"
+                : "공개 URL 입력 (이미지/비디오/오디오)"
+            }
+          >
+            <Link2 className="w-4 h-4 text-gray-400" />
+            <span className="text-[9px] text-gray-400 mt-0.5">URL</span>
+          </button>
+        )}
+        {!isAlibaba && (
+          <button
+            onClick={() => setAssetDialogOpen(true)}
+            className="w-16 h-16 border border-dashed border-green-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-green-400 hover:bg-green-50/50 transition-all shrink-0"
+            title="실사 인물 Asset URI 입력 (콘솔에서 등록한 asset://)"
+          >
+            <UserCheck className="w-4 h-4 text-green-500" />
+            <span className="text-[8px] text-green-500 mt-0.5 leading-tight text-center">
+              asset://
+            </span>
+          </button>
+        )}
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp,image/bmp,image/tiff,image/gif,video/mp4,video/quicktime,audio/mpeg,audio/mp3,audio/wav,audio/x-wav"
-          multiple
+          accept={
+            isAlibaba
+              ? "image/jpeg,image/jpg,image/png,image/bmp,image/webp"
+              : "image/jpeg,image/png,image/webp,image/bmp,image/tiff,image/gif,video/mp4,video/quicktime,audio/mpeg,audio/mp3,audio/wav,audio/x-wav"
+          }
+          multiple={!isAlibaba || happyHorseMode === "r2v"}
           className="hidden"
           onChange={(e) => {
             if (e.target.files) upload(e.target.files);
@@ -861,19 +1026,51 @@ function ReferenceMode() {
 
 export default function ReferenceUpload() {
   const { params, references } = useAppStore();
+  const [helpOpen, setHelpOpen] = useState(false);
+  const currentModel = getModelOption(params.modelId);
+  const isAlibaba = isAlibabaModel(params.modelId);
+  const maxRefs = isAlibaba
+    ? currentModel.happyHorseMode === "i2v"
+      ? 1
+      : currentModel.happyHorseMode === "r2v"
+      ? 9
+      : 0
+    : 12;
 
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 text-[11px] text-gray-400">
         <span className="font-medium text-gray-500">
-          {params.mode === "first_last_frame"
+          {isAlibaba
+            ? "HappyHorse 이미지"
+            : params.mode === "first_last_frame"
             ? "First & Last Frame"
             : "이미지 / 비디오 / 오디오"}
         </span>
-        {params.mode === "reference" && (
-          <span>({references.length}/12)</span>
+        {params.mode === "reference" && maxRefs > 0 && (
+          <span>({references.length}/{maxRefs})</span>
+        )}
+        {isAlibaba && (
+          <button
+            type="button"
+            onClick={() => setHelpOpen((v) => !v)}
+            className="ml-auto inline-flex items-center justify-center w-5 h-5 rounded-full text-gray-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
+            title="HappyHorse 첨부 조건"
+          >
+            <HelpCircle className="w-3.5 h-3.5" />
+          </button>
         )}
       </div>
+
+      {isAlibaba && helpOpen && (
+        <div className="p-2 bg-gray-50 border border-gray-200 rounded-lg text-[11px] text-gray-500 leading-relaxed">
+          {currentModel.happyHorseMode === "t2v"
+            ? "Text-to-video는 첨부 없이 프롬프트만 사용합니다."
+            : currentModel.happyHorseMode === "i2v"
+            ? "I2V: 이미지 1개, JPEG/JPG/PNG/BMP/WEBP, 10MB 이하, 가로/세로 300px 이상. 로컬 파일은 ModelStudio 임시 OSS로 업로드됩니다."
+            : "R2V: 이미지 1~9개, JPEG/JPG/PNG/BMP/WEBP, 10MB 이하, 짧은 변 400px 이상. 로컬 파일은 ModelStudio 임시 OSS로 업로드됩니다."}
+        </div>
+      )}
 
       {params.mode === "first_last_frame" ? (
         <FirstLastFrameUpload />
