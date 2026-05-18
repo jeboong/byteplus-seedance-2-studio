@@ -243,7 +243,15 @@ export default function ModelParams({
           isComposer ? "px-4 pb-3 pt-4" : "border-b px-5 py-4"
         }`}>
           {!isAlibaba ? (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={() => setParams({ mode: "text" })}
+                className={`settings-mode-tab ${
+                  params.mode === "text" ? "settings-mode-tab-active" : ""
+                }`}
+              >
+                Text
+              </button>
               <button
                 onClick={() => setParams({ mode: "reference" })}
                 className={`settings-mode-tab ${
@@ -401,7 +409,17 @@ export default function ModelParams({
           <label className="block text-xs font-medium text-gray-500 mb-2">
             Mode
           </label>
-          <div className="param-segmented grid grid-cols-2 gap-1 bg-surface-100 rounded-xl p-1">
+          <div className="param-segmented grid grid-cols-3 gap-1 bg-surface-100 rounded-xl p-1">
+            <button
+              onClick={() => setParams({ mode: "text" })}
+              className={`param-option py-2 rounded-lg text-xs font-medium transition-all ${
+                params.mode === "text"
+                  ? "param-choice-selected text-gray-800"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Text
+            </button>
             <button
               onClick={() => setParams({ mode: "reference" })}
               className={`param-option py-2 rounded-lg text-xs font-medium transition-all ${

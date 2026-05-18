@@ -1135,6 +1135,8 @@ export default function ReferenceUpload() {
         <span className="font-medium text-gray-500">
           {isAlibaba
             ? "HappyHorse 이미지"
+            : params.mode === "text"
+            ? "Text-to-video"
             : params.mode === "first_last_frame"
             ? "First & Last Frame"
             : "이미지 / 비디오 / 오디오"}
@@ -1164,7 +1166,11 @@ export default function ReferenceUpload() {
         </div>
       )}
 
-      {params.mode === "first_last_frame" ? (
+      {params.mode === "text" && !isAlibaba ? (
+        <div className="glass-control rounded-lg border p-3 text-[11px] leading-relaxed text-gray-500">
+          Text mode는 첨부 없이 프롬프트만 사용합니다.
+        </div>
+      ) : params.mode === "first_last_frame" ? (
         <FirstLastFrameUpload />
       ) : (
         <ReferenceMode />

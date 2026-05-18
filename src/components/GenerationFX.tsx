@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 
 interface GenerationFXProps {
   label: string;
-  modelLabel: string;
+  modelLabel?: string;
   compact?: boolean;
   className?: string;
+  tone?: "default" | "neutral";
 }
 
 const FRAGMENT_SHADER = `#version 300 es
@@ -48,13 +49,13 @@ void main() {
   float t = uTime;
   float d = scene(uv, t);
 
-  vec3 lightBg = vec3(0.955, 0.965, 0.980);
+  vec3 lightBg = vec3(0.895, 0.925, 0.975);
   vec3 darkBg = vec3(0.025, 0.027, 0.032);
   vec3 bg = mix(lightBg, darkBg, uDark);
 
-  vec3 accentA = mix(vec3(0.12, 0.25, 0.50), vec3(0.50, 0.66, 0.96), uDark);
-  vec3 accentB = mix(vec3(0.60, 0.72, 0.92), vec3(0.18, 0.34, 0.62), uDark);
-  vec3 ink = mix(vec3(0.02, 0.04, 0.08), vec3(0.88, 0.93, 1.0), uDark);
+  vec3 accentA = mix(vec3(0.02, 0.22, 0.78), vec3(0.50, 0.66, 0.96), uDark);
+  vec3 accentB = mix(vec3(0.00, 0.62, 0.82), vec3(0.18, 0.34, 0.62), uDark);
+  vec3 ink = mix(vec3(0.04, 0.10, 0.22), vec3(0.88, 0.93, 1.0), uDark);
 
   float glow = exp(-9.5 * abs(d));
   float body = smoothstep(0.012, 0.0, d);
@@ -63,7 +64,7 @@ void main() {
   vec2 gridUv = gl_FragCoord.xy / 24.0;
   vec2 grid = abs(fract(gridUv - 0.5) - 0.5) / fwidth(gridUv);
   float gridLine = 1.0 - min(min(grid.x, grid.y), 1.0);
-  gridLine *= 0.035 + 0.055 * (1.0 - uDark);
+  gridLine *= mix(0.115, 0.035, uDark);
 
   float vignette = smoothstep(0.95, 0.12, length(uv));
   float grain = (hash(gl_FragCoord.xy + floor(t * 24.0)) - 0.5) * 0.018;
@@ -71,9 +72,9 @@ void main() {
 
   vec3 color = bg;
   color += ink * gridLine;
-  color += flow * glow * mix(0.34, 0.58, uDark);
-  color += mix(vec3(0.94, 0.97, 1.0), vec3(0.60, 0.76, 1.0), uDark) * body * 0.36;
-  color += vec3(0.85, 0.92, 1.0) * rim * 0.16;
+  color += flow * glow * mix(1.18, 0.58, uDark);
+  color += mix(vec3(0.36, 0.66, 1.0), vec3(0.60, 0.76, 1.0), uDark) * body * mix(0.78, 0.36, uDark);
+  color += vec3(0.12, 0.38, 1.0) * rim * mix(0.58, 0.16, uDark);
   color = mix(bg, color, vignette);
   color += grain;
 
@@ -194,9 +195,9 @@ class ShaderRenderer {
 
 export default function GenerationFX({
   label,
-  modelLabel,
   compact = false,
   className = "",
+  tone = "default",
 }: GenerationFXProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const themeRef = useRef(false);
@@ -213,7 +214,7 @@ export default function GenerationFX({
     }
 
     const updateTheme = () => {
-      themeRef.current = document.documentElement.classList.contains("dark");
+      themeRef.current = true;
     };
     updateTheme();
 
@@ -251,7 +252,7 @@ export default function GenerationFX({
     <div
       className={`generation-shader-fx ${
         compact ? "generation-fx-compact" : ""
-      } ${className}`}
+      } ${tone === "neutral" ? "generation-fx-neutral" : ""} ${className}`}
     >
       {shaderReady ? (
         <canvas
@@ -266,7 +267,6 @@ export default function GenerationFX({
       <div className="generation-fx-copy generation-shader-copy">
         <span className="generation-status-pill" />
         <span className={compact ? "text-[11px]" : "text-sm"}>{label}</span>
-        <span className="text-[10px]">{modelLabel}</span>
       </div>
     </div>
   );

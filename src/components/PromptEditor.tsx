@@ -21,6 +21,51 @@ import { getRefTags } from "@/lib/refTags";
 const DROPDOWN_WIDTH = 230;
 const DROPDOWN_MAX_HEIGHT = 224;
 
+type TagItem = {
+  id: string;
+  type: "image" | "video" | "audio";
+  name: string;
+  url: string;
+  preview?: string;
+  tag: string;
+};
+
+function getMentionState(textarea: HTMLTextAreaElement): {
+  query: string;
+  start: number;
+  cursor: number;
+} | null {
+  const cursor = textarea.selectionStart ?? 0;
+  const before = textarea.value.slice(0, cursor);
+  const match = /@([A-Za-z0-9]*)$/.exec(before);
+  if (!match) return null;
+
+  const start = cursor - match[0].length;
+  const charBefore = start > 0 ? textarea.value[start - 1] : " ";
+  if (start !== 0 && !/\s/.test(charBefore)) return null;
+
+  return { query: match[1], start, cursor };
+}
+
+function itemMatchesQuery(item: TagItem, query: string): boolean {
+  const q = query.toLowerCase();
+  if (!q) return true;
+  const tag = item.tag.toLowerCase().slice(1);
+  const n = tag.replace(/^\D+/, "");
+  const aliases =
+    item.type === "image"
+      ? [`img${n}`, `image${n}`, "img", "image"]
+      : item.type === "video"
+      ? [`vid${n}`, `video${n}`, "vid", "video"]
+      : [`aud${n}`, `audio${n}`, "aud", "audio"];
+
+  return (
+    tag.startsWith(q) ||
+    aliases.some((alias) => alias.startsWith(q)) ||
+    item.name.toLowerCase().includes(q)
+  );
+}
+
 function getCaretCoordinates(
   textarea: HTMLTextAreaElement,
   position: number
@@ -114,7 +159,7 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const references = useAppStore((s) => s.references);
   const tagsById = useMemo(() => getRefTags(references), [references]);
-  const tagItems = useMemo(
+  const tagItems = useMemo<TagItem[]>(
     () =>
       references.map((r) => ({
         id: r.id,
@@ -144,13 +189,7 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
 
   const filtered = useMemo(() => {
     if (tagItems.length === 0) return [];
-    const q = acQuery.toLowerCase();
-    if (!q) return tagItems;
-    return tagItems.filter(
-      (item) =>
-        item.tag.toLowerCase().slice(1).startsWith(q) ||
-        item.name.toLowerCase().includes(q)
-    );
+    return tagItems.filter((item) => itemMatchesQuery(item, acQuery));
   }, [tagItems, acQuery]);
 
   useEffect(() => {
@@ -165,23 +204,13 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
       return;
     }
 
-    const currentValue = textarea.value;
-    const cursor = textarea.selectionStart ?? 0;
-    const before = currentValue.slice(0, cursor);
-    const match = /@([A-Za-z0-9]*)$/.exec(before);
-    if (!match) {
+    const mention = getMentionState(textarea);
+    if (!mention) {
       setAcOpen(false);
       return;
     }
 
-    const start = cursor - match[0].length;
-    const charBefore = start > 0 ? currentValue[start - 1] : " ";
-    if (start !== 0 && !/\s/.test(charBefore)) {
-      setAcOpen(false);
-      return;
-    }
-
-    const coords = getCaretCoordinates(textarea, start);
+    const coords = getCaretCoordinates(textarea, mention.start);
     const rect = textarea.getBoundingClientRect();
     const caretX = rect.left + coords.left - textarea.scrollLeft;
     const caretTop = rect.top + coords.top - textarea.scrollTop;
@@ -201,9 +230,16 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
       flipDown,
     });
     setAcOpen(true);
-    setAcQuery(match[1]);
-    setAcStart(start);
+    setAcQuery(mention.query);
+    setAcStart(mention.start);
   }, [tagItems.length]);
+
+  const queueAutocompletePlacement = useCallback(() => {
+    requestAnimationFrame(() => {
+      placeAutocomplete();
+      window.setTimeout(placeAutocomplete, 0);
+    });
+  }, [placeAutocomplete]);
 
   useEffect(() => {
     if (!acOpen) return;
@@ -217,12 +253,12 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
   }, [acOpen]);
 
   const acceptAutocomplete = useCallback(
-    (item: (typeof tagItems)[number]) => {
+    (item: TagItem, replacementStart = acStart, replacementEnd?: number) => {
       const textarea = textareaRef.current;
-      if (!textarea || acStart < 0) return;
+      if (!textarea || replacementStart < 0) return;
       const currentValue = textarea.value;
-      const cursor = textarea.selectionStart ?? 0;
-      const head = currentValue.slice(0, acStart);
+      const cursor = replacementEnd ?? textarea.selectionStart ?? 0;
+      const head = currentValue.slice(0, replacementStart);
       const tail = currentValue.slice(cursor);
       const insertion = `${item.tag}${tail.startsWith(" ") ? "" : " "}`;
       const next = head + insertion + tail;
@@ -264,18 +300,26 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
   const handleChange = useCallback(
     (e: ChangeEvent<HTMLTextAreaElement>) => {
       onChange(e.target.value);
-      requestAnimationFrame(() => {
-        placeAutocomplete();
-        requestAnimationFrame(placeAutocomplete);
-      });
+      queueAutocompletePlacement();
     },
-    [onChange, placeAutocomplete]
+    [onChange, queueAutocompletePlacement]
   );
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "@" && !acOpen) {
-        requestAnimationFrame(placeAutocomplete);
+        queueAutocompletePlacement();
+        return;
+      }
+      if (!acOpen && (e.key === "Tab" || e.key === "Enter")) {
+        const mention = getMentionState(e.currentTarget);
+        if (!mention) return;
+        const firstMatch = tagItems.find((item) =>
+          itemMatchesQuery(item, mention.query)
+        );
+        if (!firstMatch) return;
+        e.preventDefault();
+        acceptAutocomplete(firstMatch, mention.start, mention.cursor);
         return;
       }
       if (!acOpen || filtered.length === 0) return;
@@ -293,12 +337,19 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
         setAcOpen(false);
       }
     },
-    [acceptAutocomplete, acIndex, acOpen, filtered, placeAutocomplete]
+    [
+      acceptAutocomplete,
+      acIndex,
+      acOpen,
+      filtered,
+      queueAutocompletePlacement,
+      tagItems,
+    ]
   );
 
   const refreshAutocomplete = useCallback(() => {
-    requestAnimationFrame(placeAutocomplete);
-  }, [placeAutocomplete]);
+    queueAutocompletePlacement();
+  }, [queueAutocompletePlacement]);
 
   return (
     <div
@@ -313,7 +364,10 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
         onKeyDown={handleKeyDown}
         onKeyUp={refreshAutocomplete}
         onClick={refreshAutocomplete}
-        onFocus={onFocus}
+        onFocus={() => {
+          onFocus?.();
+          queueAutocompletePlacement();
+        }}
         onBlur={() => {
           setTimeout(() => setAcOpen(false), 120);
           onBlur?.();

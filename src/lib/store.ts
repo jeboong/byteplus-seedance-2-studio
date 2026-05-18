@@ -8,11 +8,20 @@ import {
 } from "./types";
 
 const TASKS_KEY = "sd2_tasks";
+const DRAFT_KEY = "sd2_composer_draft";
 const PERSIST_DEBOUNCE_MS = 800;
 const DEMO_VIDEO_URL =
   "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let persistDraftTimer: ReturnType<typeof setTimeout> | null = null;
+
+interface ComposerDraft {
+  prompt: string;
+  references: ReferenceAsset[];
+  params: ModelParams;
+  updatedAt: number;
+}
 
 /**
  * Strip base64 payloads from a task before writing to IndexedDB.
@@ -47,6 +56,16 @@ function persistTasks(tasks: GenerationTask[]) {
     const slim = tasks.map(slimTaskForPersist);
     idbSet(TASKS_KEY, slim).catch((err) => {
       console.error("[store] IndexedDB persist failed:", err);
+    });
+  }, PERSIST_DEBOUNCE_MS);
+}
+
+function persistDraft(draft: Omit<ComposerDraft, "updatedAt">) {
+  if (typeof window === "undefined") return;
+  if (persistDraftTimer) clearTimeout(persistDraftTimer);
+  persistDraftTimer = setTimeout(() => {
+    idbSet(DRAFT_KEY, { ...draft, updatedAt: Date.now() }).catch((err) => {
+      console.error("[store] draft persist failed:", err);
     });
   }, PERSIST_DEBOUNCE_MS);
 }
@@ -139,21 +158,43 @@ export const useAppStore = create<AppState>((set) => ({
 
   params: DEFAULT_PARAMS,
   setParams: (partial) =>
-    set((s) => ({ params: { ...s.params, ...partial } })),
-  resetParams: () => set({ params: DEFAULT_PARAMS }),
+    set((s) => {
+      const params = { ...s.params, ...partial };
+      persistDraft({ prompt: s.prompt, references: s.references, params });
+      return { params };
+    }),
+  resetParams: () =>
+    set((s) => {
+      persistDraft({
+        prompt: s.prompt,
+        references: s.references,
+        params: DEFAULT_PARAMS,
+      });
+      return { params: DEFAULT_PARAMS };
+    }),
 
   prompt: "",
-  setPrompt: (prompt) => set({ prompt }),
+  setPrompt: (prompt) =>
+    set((s) => {
+      persistDraft({ prompt, references: s.references, params: s.params });
+      return { prompt };
+    }),
 
   references: [],
   addReference: (ref) =>
-    set((s) => ({ references: [...s.references, ref] })),
+    set((s) => {
+      const references = [...s.references, ref];
+      persistDraft({ prompt: s.prompt, references, params: s.params });
+      return { references };
+    }),
   updateReference: (id, update) =>
-    set((s) => ({
-      references: s.references.map((r) =>
+    set((s) => {
+      const references = s.references.map((r) =>
         r.id === id ? { ...r, ...update } : r
-      ),
-    })),
+      );
+      persistDraft({ prompt: s.prompt, references, params: s.params });
+      return { references };
+    }),
   reorderReference: (dragId, targetId) =>
     set((s) => {
       if (dragId === targetId) return s;
@@ -163,11 +204,20 @@ export const useAppStore = create<AppState>((set) => ({
       const next = [...s.references];
       const [moved] = next.splice(from, 1);
       next.splice(to, 0, moved);
+      persistDraft({ prompt: s.prompt, references: next, params: s.params });
       return { references: next };
     }),
   removeReference: (id) =>
-    set((s) => ({ references: s.references.filter((r) => r.id !== id) })),
-  clearReferences: () => set({ references: [] }),
+    set((s) => {
+      const references = s.references.filter((r) => r.id !== id);
+      persistDraft({ prompt: s.prompt, references, params: s.params });
+      return { references };
+    }),
+  clearReferences: () =>
+    set((s) => {
+      persistDraft({ prompt: s.prompt, references: [], params: s.params });
+      return { references: [] };
+    }),
 
   tasks: [],
   tasksHydrated: false,
@@ -214,6 +264,11 @@ export const useAppStore = create<AppState>((set) => ({
         ...r,
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       }));
+      persistDraft({
+        prompt: task.prompt,
+        references: refs,
+        params: { ...task.params },
+      });
       return {
         prompt: task.prompt,
         references: refs,
@@ -266,6 +321,22 @@ export async function hydrateTasks(): Promise<void> {
       useAppStore.setState({ tasks: saved, tasksHydrated: true });
     } else {
       useAppStore.setState({ tasksHydrated: true });
+    }
+
+    const draft = await idbGet<ComposerDraft>(DRAFT_KEY);
+    const current = useAppStore.getState();
+    if (
+      draft &&
+      typeof draft.prompt === "string" &&
+      Array.isArray(draft.references) &&
+      !current.prompt &&
+      current.references.length === 0
+    ) {
+      useAppStore.setState({
+        prompt: draft.prompt,
+        references: draft.references,
+        params: { ...DEFAULT_PARAMS, ...draft.params },
+      });
     }
   } catch (err) {
     console.error("[store] hydrateTasks failed:", err);

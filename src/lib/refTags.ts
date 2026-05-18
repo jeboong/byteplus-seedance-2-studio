@@ -1,6 +1,7 @@
 import type { ReferenceAsset } from "./types";
 
 export type RefTagPrefix = "img" | "vid" | "aud";
+type RefTagAlias = RefTagPrefix | "image" | "video" | "audio";
 
 export function getTagPrefix(type: ReferenceAsset["type"]): RefTagPrefix {
   if (type === "video") return "vid";
@@ -40,11 +41,14 @@ export function getRefTags(refs: ReferenceAsset[]): Record<string, string> {
  */
 export function expandPromptTags(prompt: string): string {
   return prompt.replace(
-    /@(img|vid|aud)(\d+)/gi,
+    /@(img|image|vid|video|aud|audio)(\d+)/gi,
     (_match, prefix: string, n: string) => {
-      const lc = prefix.toLowerCase() as RefTagPrefix;
-      const word =
-        lc === "img" ? "Image" : lc === "vid" ? "Video" : "Audio";
+      const lc = prefix.toLowerCase() as RefTagAlias;
+      const word = lc === "img" || lc === "image"
+        ? "Image"
+        : lc === "vid" || lc === "video"
+        ? "Video"
+        : "Audio";
       return `[${word} ${n}]`;
     }
   );

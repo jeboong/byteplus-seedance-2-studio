@@ -6,6 +6,7 @@ import {
   useRef,
   useEffect,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   Download,
   Loader2,
@@ -21,6 +22,7 @@ import {
   Timer,
   ImageIcon,
   Check,
+  Copy,
   RotateCcw,
   Maximize2,
   Minimize2,
@@ -72,9 +74,11 @@ function cssAspectRatio(ratio?: string): string {
 function ReferenceThumb({
   asset,
   tag,
+  onOpen,
 }: {
   asset: ReferenceAsset;
   tag?: string;
+  onOpen?: (asset: ReferenceAsset) => void;
 }) {
   const isAsset = asset.url?.startsWith("asset://") ?? false;
   const isImage = asset.type === "image";
@@ -85,11 +89,8 @@ function ReferenceThumb({
       ? "L"
       : "";
 
-  return (
-    <div
-      className="glass-control relative w-8 h-8 rounded-md overflow-hidden border flex items-center justify-center shrink-0"
-      title={`${tag ? `${tag} · ` : ""}${asset.name} (${asset.role || asset.type})`}
-    >
+  const content = (
+    <>
       {isImage && asset.preview && !isAsset ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -116,7 +117,121 @@ function ReferenceThumb({
           {roleLabel}
         </span>
       )}
+    </>
+  );
+
+  const title = `${tag ? `${tag} · ` : ""}${asset.name} (${asset.role || asset.type})`;
+
+  if (onOpen) {
+    return (
+      <button
+        type="button"
+        className="task-reference-thumb glass-control relative w-8 h-8 rounded-md overflow-hidden border flex items-center justify-center shrink-0"
+        title={`${title} 크게 보기`}
+        aria-label={`${title} 크게 보기`}
+        data-no-task-click
+        onClick={(event) => {
+          event.stopPropagation();
+          onOpen(asset);
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div
+      className="task-reference-thumb glass-control relative w-8 h-8 rounded-md overflow-hidden border flex items-center justify-center shrink-0"
+      title={title}
+    >
+      {content}
     </div>
+  );
+}
+
+function AttachmentPreviewOverlay({
+  asset,
+  tag,
+  onClose,
+}: {
+  asset: ReferenceAsset;
+  tag?: string;
+  onClose: () => void;
+}) {
+  const source = asset.preview || asset.url;
+  const isAsset = source?.startsWith("asset://") ?? false;
+  const canShowImage = asset.type === "image" && source && !isAsset;
+  const canShowVideo = asset.type === "video" && asset.url && !isAsset;
+  const canShowAudio = asset.type === "audio" && asset.url && !isAsset;
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className="attachment-preview-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="첨부파일 크게 보기"
+      data-no-task-click
+      data-no-task-drag
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="attachment-preview-panel"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button
+          type="button"
+          className="attachment-preview-close"
+          onClick={onClose}
+          aria-label="닫기"
+          title="닫기"
+        >
+          <X className="h-4 w-4" />
+        </button>
+        <div className="attachment-preview-media">
+          {canShowImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={source} alt={asset.name} />
+          ) : canShowVideo ? (
+            <video src={asset.url} controls autoPlay muted playsInline />
+          ) : canShowAudio ? (
+            <div className="attachment-preview-audio">
+              <Music className="h-8 w-8" />
+              <audio src={asset.url} controls />
+            </div>
+          ) : (
+            <div className="attachment-preview-empty">
+              {asset.type === "video" ? (
+                <Film className="h-8 w-8" />
+              ) : asset.type === "audio" ? (
+                <Music className="h-8 w-8" />
+              ) : (
+                <ImageIcon className="h-8 w-8" />
+              )}
+              <span>프리뷰 가능한 로컬 데이터가 없습니다.</span>
+            </div>
+          )}
+        </div>
+        <div className="attachment-preview-caption">
+          <span>{tag || asset.type}</span>
+          <strong>{asset.name}</strong>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -231,20 +346,127 @@ function HoverVideo({
 
 function GenerationState({
   label,
-  modelLabel,
   compact,
+  neutral,
 }: {
   label: string;
-  modelLabel: string;
   compact?: boolean;
+  neutral?: boolean;
 }) {
   return (
     <GenerationFX
       label={label}
-      modelLabel={modelLabel}
       compact={compact}
+      tone={neutral ? "neutral" : "default"}
       className="h-full w-full"
     />
+  );
+}
+
+function InlineTaskDetails({
+  task,
+  onOpenAttachment,
+}: {
+  task: GenerationTask;
+  onOpenAttachment?: (asset: ReferenceAsset) => void;
+}) {
+  const [promptCopied, setPromptCopied] = useState(false);
+  const taskModel = getModelOption(task.params.modelId);
+  const tags = task.references ? getRefTags(task.references) : {};
+  const actualDuration =
+    task.actualDuration ??
+    (task.params.durationType === "seconds" ? task.params.duration : null);
+  const usageTokens =
+    task.usage?.total_tokens ?? task.usage?.completion_tokens ?? null;
+  const modeLabel =
+    task.params.mode === "text"
+      ? "Text"
+      : task.params.mode === "first_last_frame"
+      ? "First/Last"
+      : "Reference";
+  const copyPrompt = useCallback(async () => {
+    const text = task.prompt || "";
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setPromptCopied(true);
+      window.setTimeout(() => setPromptCopied(false), 1200);
+    } catch {
+      setPromptCopied(false);
+    }
+  }, [task.prompt]);
+
+  return (
+    <div className="task-inline-details" data-no-task-click>
+      <section className="task-inline-block task-inline-prompt">
+        <div className="task-inline-label-row">
+          <div className="task-inline-label">Prompt</div>
+          <button
+            type="button"
+            className={`task-inline-copy-button ${
+              promptCopied ? "task-inline-copy-button-done" : ""
+            }`}
+            onClick={copyPrompt}
+            disabled={!task.prompt}
+            title="프롬프트 복사"
+            aria-label="프롬프트 복사"
+          >
+            {promptCopied ? (
+              <Check className="h-3.5 w-3.5" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
+          </button>
+        </div>
+        <p>{task.prompt || "(no prompt)"}</p>
+      </section>
+
+      <section className="task-inline-block">
+        <div className="task-inline-label">Details</div>
+        <dl className="task-inline-dl">
+          <dt>Model</dt>
+          <dd>{taskModel.name}</dd>
+          <dt>Mode</dt>
+          <dd>{modeLabel}</dd>
+          <dt>Duration</dt>
+          <dd>{actualDuration ? `${actualDuration}s` : "Auto"}</dd>
+          <dt>Ratio</dt>
+          <dd>{task.actualRatio || task.params.ratio}</dd>
+          <dt>Resolution</dt>
+          <dd>{task.actualResolution || task.params.resolution}</dd>
+          <dt>Status</dt>
+          <dd>{task.status}</dd>
+          {typeof task.seed === "number" && (
+            <>
+              <dt>Seed</dt>
+              <dd>{task.seed}</dd>
+            </>
+          )}
+          {typeof usageTokens === "number" && (
+            <>
+              <dt>Tokens</dt>
+              <dd>{usageTokens.toLocaleString()}</dd>
+            </>
+          )}
+        </dl>
+      </section>
+
+      {task.references && task.references.length > 0 && (
+        <section className="task-inline-block task-inline-refs">
+          <div className="task-inline-label">References</div>
+          <div className="task-inline-ref-row">
+            {task.references.map((ref) => (
+              <ReferenceThumb
+                key={ref.id}
+                asset={ref}
+                tag={tags[ref.id]}
+                onOpen={onOpenAttachment}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
   );
 }
 
@@ -275,6 +497,7 @@ function TaskCard({
     x: number;
     y: number;
   } | null>(null);
+  const [previewAsset, setPreviewAsset] = useState<ReferenceAsset | null>(null);
   const downloadKey = getTaskDownloadKey(task);
   const [downloaded, setDownloaded] = useState(false);
 
@@ -385,6 +608,7 @@ function TaskCard({
   const canCancel = task.status === "queued" && !isAlibaba;
   const isGenerating = ["pending", "queued", "running"].includes(task.status);
   const taskModel = getModelOption(task.params.modelId);
+  const canExpandMedia = Boolean(isFinished);
 
   const handleDelete = useCallback(async () => {
     setDeleteMenu(null);
@@ -448,9 +672,13 @@ function TaskCard({
         onToggleSelect?.();
         return;
       }
-      onOpenDetail();
+      if (compact) {
+        onOpenDetail();
+      } else {
+        onToggleExpand?.();
+      }
     },
-    [onOpenDetail, onToggleSelect, selectionMode]
+    [compact, onOpenDetail, onToggleExpand, onToggleSelect, selectionMode]
   );
 
   const handleCardSelectClick = useCallback(
@@ -471,7 +699,11 @@ function TaskCard({
 
   return (
     <div
-      className={`task-card rounded-2xl border overflow-hidden h-full flex flex-col ${
+      data-task-card
+      data-task-card-id={task.id}
+      className={`task-card task-card-status-${effectiveStatus} ${
+        isFinished ? "task-card-finished" : ""
+      } rounded-2xl border overflow-hidden h-full flex flex-col ${
         expanded ? "task-card-expanded" : ""
       } ${selectionMode ? "task-card-selectable" : ""} ${
         selected ? "task-card-selected" : ""
@@ -496,23 +728,41 @@ function TaskCard({
           {selected && <Check className="h-3.5 w-3.5" />}
         </button>
       )}
-      <button
-        data-no-task-drag
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={(event) => {
-          event.stopPropagation();
-          onToggleExpand?.();
-        }}
-        className="task-icon-button task-detail-button task-card-detail-floating"
-        title={expanded ? "카드 축소" : "카드 크게 보기"}
-        aria-label={expanded ? "카드 축소" : "카드 크게 보기"}
-      >
-        {expanded ? (
-          <Minimize2 className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
-        ) : (
-          <Maximize2 className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
-        )}
-      </button>
+      {canExpandMedia && (
+        <button
+          data-no-task-drag
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (compact) {
+              onOpenDetail();
+            } else {
+              onToggleExpand?.();
+            }
+          }}
+          className="task-icon-button task-detail-button task-card-detail-floating"
+          title={
+            compact
+              ? "상세보기"
+              : expanded
+              ? "카드 축소"
+              : "카드 크게 보기"
+          }
+          aria-label={
+            compact
+              ? "상세보기"
+              : expanded
+              ? "카드 축소"
+              : "카드 크게 보기"
+          }
+        >
+          {!compact && expanded ? (
+            <Minimize2 className="w-3.5 h-3.5" />
+          ) : (
+            <Maximize2 className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
+          )}
+        </button>
+      )}
       {deleteMenu && canDelete && (
         <div
           className="task-context-menu"
@@ -549,7 +799,7 @@ function TaskCard({
           <GenerationState
             compact={compact}
             label={cfg.label}
-            modelLabel={taskModel.name}
+            neutral={task.status === "pending"}
           />
         </div>
       ) : (
@@ -596,10 +846,18 @@ function TaskCard({
         {!compact && task.references && task.references.length > 0 && (() => {
           const tags = getRefTags(task.references);
           return (
-            <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+            <div
+              className="task-reference-row mt-2 flex items-center gap-1.5 flex-wrap"
+              data-no-task-click
+            >
               <Paperclip className="w-3 h-3 text-gray-300" />
               {task.references.map((r) => (
-                <ReferenceThumb key={r.id} asset={r} tag={tags[r.id]} />
+                <ReferenceThumb
+                  key={r.id}
+                  asset={r}
+                  tag={tags[r.id]}
+                  onOpen={setPreviewAsset}
+                />
               ))}
             </div>
           );
@@ -639,7 +897,11 @@ function TaskCard({
             <button
               onClick={(event) => {
                 event.stopPropagation();
-                onOpenDetail();
+                if (compact) {
+                  onOpenDetail();
+                } else {
+                  onToggleExpand?.();
+                }
               }}
               className="task-icon-button"
               title="상세보기"
@@ -714,6 +976,16 @@ function TaskCard({
           </div>
         </div>
       </div>
+      {expanded && !compact && (
+        <InlineTaskDetails task={task} onOpenAttachment={setPreviewAsset} />
+      )}
+      {previewAsset && (
+        <AttachmentPreviewOverlay
+          asset={previewAsset}
+          tag={task.references ? getRefTags(task.references)[previewAsset.id] : undefined}
+          onClose={() => setPreviewAsset(null)}
+        />
+      )}
     </div>
   );
 }
@@ -794,6 +1066,25 @@ export default function VideoResult() {
     setSelectionMode(false);
     setSelectedTaskIds(new Set());
   }, [tasks.length]);
+
+  useEffect(() => {
+    if (!expandedTaskId || viewMode !== "free") return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (
+        target.closest("[data-task-card]") ||
+        target.closest(".attachment-preview-overlay")
+      ) {
+        return;
+      }
+      setExpandedTaskId(null);
+    };
+    window.addEventListener("pointerdown", closeOnOutsidePointer, true);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePointer, true);
+    };
+  }, [expandedTaskId, viewMode]);
 
   const closeTaskActions = useCallback(() => {
     setTaskActionsOpen(false);
@@ -952,7 +1243,11 @@ export default function VideoResult() {
               selectionMode={selectionMode}
               selected={selectedTaskIds.has(task.id)}
               onToggleSelect={() => toggleTaskSelection(task.id)}
-              onOpenDetail={() => setDetailTaskId(task.id)}
+              onOpenDetail={() =>
+                setExpandedTaskId((current) =>
+                  current === task.id ? null : task.id
+                )
+              }
             />
           ))}
         </div>
@@ -963,7 +1258,7 @@ export default function VideoResult() {
               key={task.id}
               task={task}
               compact
-              expanded={expandedTaskId === task.id}
+              expanded={false}
               onToggleExpand={() =>
                 setExpandedTaskId((current) =>
                   current === task.id ? null : task.id

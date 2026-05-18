@@ -128,13 +128,15 @@ export function buildPayload(
   // BytePlus recommends "[Image 1]xxx, [Image 2]xxx" natural-language refs.
   // We let users author with friendly @img1 / @vid1 / @aud1 tags in the UI
   // and expand them here just before sending the request.
-  const expandedPrompt = expandPromptTags(prompt);
+  const activeReferences = params.mode === "text" ? [] : references;
+  const expandedPrompt =
+    params.mode === "text" ? prompt : expandPromptTags(prompt);
 
   const content: Record<string, unknown>[] = [
     { type: "text", text: expandedPrompt },
   ];
 
-  for (const ref of references) {
+  for (const ref of activeReferences) {
     if (ref.uploading || !ref.url) {
       throw new Error(`파일 업로드가 아직 끝나지 않았습니다: ${ref.name}`);
     }

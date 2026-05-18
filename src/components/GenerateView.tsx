@@ -5,16 +5,21 @@ import {
   useCallback,
   useRef,
   useEffect,
+  useMemo,
   type CSSProperties,
 } from "react";
 import {
   Play,
   ChevronDown,
   ImagePlus,
-  GripHorizontal,
+  Image as ImageIcon,
+  Film,
   Link2,
+  Music,
   Plus,
   X,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { useAppStore, hydrateTasks } from "@/lib/store";
 import { createGenerationTask, getTaskStatus } from "@/lib/api";
@@ -28,6 +33,7 @@ import {
 } from "@/lib/types";
 import { useFileUpload } from "@/lib/useFileUpload";
 import { PromptInsertProvider } from "@/lib/usePromptInsert";
+import { getRefTags } from "@/lib/refTags";
 import Header from "./Header";
 import ModelParams from "./ModelParams";
 import PromptEditor, { type PromptEditorHandle } from "./PromptEditor";
@@ -71,11 +77,18 @@ function detectExternalReference(
 type FrameRole = "first_frame" | "last_frame";
 
 const FRAME_SLOT_META: Record<FrameRole, { label: string; shortLabel: string }> = {
-  first_frame: { label: "START FRAME", shortLabel: "First" },
-  last_frame: { label: "END FRAME", shortLabel: "Last" },
+  first_frame: { label: "START", shortLabel: "First" },
+  last_frame: { label: "END", shortLabel: "Last" },
 };
 
 const MAGNET_GRID = 64;
+const COMPOSER_INTERACTIVE_SELECTOR =
+  'button, input, textarea, select, a, [role="button"], [data-no-composer-drag]';
+const BYTEPLUS_MODE_CYCLE: ModelParamsType["mode"][] = [
+  "text",
+  "reference",
+  "first_last_frame",
+];
 
 function snapNumber(value: number, step = MAGNET_GRID): number {
   return Math.round(value / step) * step;
@@ -90,6 +103,28 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+function clipboardFilesFromData(data: DataTransfer | null): File[] {
+  if (!data) return [];
+  const files = Array.from(data.files ?? []);
+  if (files.length > 0) return files;
+
+  const result: File[] = [];
+  for (const item of Array.from(data.items ?? [])) {
+    if (item.kind !== "file") continue;
+    if (!item.type.startsWith("image/")) continue;
+    const file = item.getAsFile();
+    if (!file) continue;
+    result.push(
+      file.name
+        ? file
+        : new File([file], `clipboard-image-${Date.now()}.png`, {
+            type: file.type || item.type || "image/png",
+          })
+    );
+  }
+  return result;
+}
+
 export default function GenerateView() {
   const {
     apiKey,
@@ -102,6 +137,7 @@ export default function GenerateView() {
     setParams,
     addReference,
     removeReference,
+    reorderReference,
     addTask,
     updateTask,
     clearDemoTasks,
@@ -122,6 +158,13 @@ export default function GenerateView() {
   const [dragOverFrameRole, setDragOverFrameRole] = useState<FrameRole | null>(
     null
   );
+  const [draggedReferenceId, setDraggedReferenceId] = useState<string | null>(
+    null
+  );
+  const [dragOverReferenceId, setDragOverReferenceId] = useState<string | null>(
+    null
+  );
+  const [isAttachmentPasteArmed, setIsAttachmentPasteArmed] = useState(false);
   const [isComposerDragging, setIsComposerDragging] = useState(false);
   const [isComposerResizing, setIsComposerResizing] = useState(false);
   const [isComposerSnapping, setIsComposerSnapping] = useState(false);
@@ -181,6 +224,20 @@ export default function GenerateView() {
   const { upload: uploadFiles, error: dropError, clearError: clearDropError } =
     useFileUpload();
 
+  const uploadComposerFiles = useCallback(
+    (files: FileList | File[] | File) => {
+      if (!isAlibabaModel(useAppStore.getState().params.modelId)) {
+        const currentMode = useAppStore.getState().params.mode;
+        if (currentMode === "text") {
+          useAppStore.getState().setParams({ mode: "reference" });
+        }
+      }
+      setPromptExpanded(true);
+      void uploadFiles(files);
+    },
+    [uploadFiles]
+  );
+
   const insertAtCursor = useCallback((text: string) => {
     if (promptEditorRef.current) {
       promptEditorRef.current.insertAtCursor(text);
@@ -229,10 +286,10 @@ export default function GenerateView() {
       setIsDragOver(false);
       const files = e.dataTransfer.files;
       if (files?.length) {
-        uploadFiles(files);
+        uploadComposerFiles(files);
       }
     },
-    [uploadFiles]
+    [uploadComposerFiles]
   );
 
   const handleReferenceSlotDrop = useCallback(
@@ -242,34 +299,103 @@ export default function GenerateView() {
 
       const files = event.dataTransfer.files;
       if (files?.length) {
-        uploadFiles(files);
+        uploadComposerFiles(files);
       }
     },
-    [uploadFiles]
+    [uploadComposerFiles]
   );
 
   const handleReferenceFileChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const files = event.target.files;
       if (files?.length) {
-        uploadFiles(files);
+        uploadComposerFiles(files);
         setExternalReferenceOpen(false);
       }
       event.target.value = "";
     },
-    [uploadFiles]
+    [uploadComposerFiles]
   );
+
+  const handleReferenceDragStart = useCallback(
+    (id: string, event: React.DragEvent<HTMLDivElement>) => {
+      setDraggedReferenceId(id);
+      setDragOverReferenceId(null);
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("application/x-reference-id", id);
+      event.dataTransfer.setData("text/plain", id);
+    },
+    []
+  );
+
+  const handleReferenceDragEnter = useCallback(
+    (id: string, event: React.DragEvent<HTMLDivElement>) => {
+      if (!draggedReferenceId || draggedReferenceId === id) return;
+      event.preventDefault();
+      setDragOverReferenceId(id);
+    },
+    [draggedReferenceId]
+  );
+
+  const handleReferenceAssetDrop = useCallback(
+    (targetId: string, event: React.DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const files = event.dataTransfer.files;
+      if (files?.length) {
+        uploadComposerFiles(files);
+      } else {
+        const sourceId =
+          event.dataTransfer.getData("application/x-reference-id") ||
+          draggedReferenceId;
+        if (sourceId && sourceId !== targetId) {
+          reorderReference(sourceId, targetId);
+        }
+      }
+      setDraggedReferenceId(null);
+      setDragOverReferenceId(null);
+    },
+    [draggedReferenceId, reorderReference, uploadComposerFiles]
+  );
+
+  const clearReferenceDrag = useCallback(() => {
+    setDraggedReferenceId(null);
+    setDragOverReferenceId(null);
+  }, []);
 
   const handlePaste = useCallback(
     (e: React.ClipboardEvent) => {
-      const files = e.clipboardData?.files;
-      if (files && files.length > 0) {
+      const files = clipboardFilesFromData(e.clipboardData);
+      if (files.length > 0) {
         e.preventDefault();
-        uploadFiles(files);
+        e.stopPropagation();
+        uploadComposerFiles(files);
       }
     },
-    [uploadFiles]
+    [uploadComposerFiles]
   );
+
+  useEffect(() => {
+    const handleWindowPaste = (event: ClipboardEvent) => {
+      if (!isAttachmentPasteArmed) return;
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        active.closest("[data-prompt-editor-region]")
+      ) {
+        return;
+      }
+      const files = clipboardFilesFromData(event.clipboardData);
+      if (files.length === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      uploadComposerFiles(files);
+    };
+
+    window.addEventListener("paste", handleWindowPaste, true);
+    return () => {
+      window.removeEventListener("paste", handleWindowPaste, true);
+    };
+  }, [isAttachmentPasteArmed, uploadComposerFiles]);
 
   const clampComposerOffset = useCallback((offset: { x: number; y: number }) => {
     const host = mainRef.current;
@@ -417,11 +543,7 @@ export default function GenerateView() {
       if (e.button !== 0 || isComposerResizing) return;
       const target = e.target;
       if (!(target instanceof HTMLElement)) return;
-      if (
-        target.closest(
-          'button, input, textarea, select, a, [role="button"], [data-no-composer-drag]'
-        )
-      ) {
+      if (target.closest(COMPOSER_INTERACTIVE_SELECTOR)) {
         return;
       }
       handleComposerPointerDown(e);
@@ -434,9 +556,7 @@ export default function GenerateView() {
       const target = event.target;
       if (
         target instanceof HTMLElement &&
-        target.closest(
-          'button, input, textarea, select, a, [role="button"], [data-no-composer-drag]'
-        )
+        target.closest(COMPOSER_INTERACTIVE_SELECTOR)
       ) {
         return;
       }
@@ -743,12 +863,50 @@ export default function GenerateView() {
     };
   }, [externalReferenceOpen, paramsOpen, promptExpanded]);
 
+  useEffect(() => {
+    if (!isExpanded) return;
+    const raf = requestAnimationFrame(() => {
+      const card = composerRef.current;
+      const textarea = card?.querySelector<HTMLTextAreaElement>(
+        ".prompt-editor-textarea"
+      );
+      if (!card || !textarea) return;
+
+      const currentHeight = composerSize.promptHeight ?? textarea.offsetHeight;
+      const desiredHeight = Math.ceil(textarea.scrollHeight + 8);
+      if (desiredHeight <= currentHeight + 12) return;
+
+      const rect = card.getBoundingClientRect();
+      const next = clampComposerSize({
+        width: composerSize.width ?? rect.width,
+        promptHeight: desiredHeight,
+      });
+      setComposerSize((size) => ({
+        ...size,
+        promptHeight: next.promptHeight,
+      }));
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [
+    clampComposerSize,
+    composerSize.promptHeight,
+    composerSize.width,
+    isExpanded,
+    prompt,
+  ]);
+
   const currentModel = getModelOption(params.modelId);
   const isAlibaba = isAlibabaModel(params.modelId);
   const activeApiKey = isAlibaba ? alibabaApiKey : apiKey;
-  const hasVideoRef = references.some((r) => r.type === "video");
+  const isTextMode = !isAlibaba && params.mode === "text";
+  const activeReferences = useMemo(
+    () => (isTextMode ? [] : references),
+    [isTextMode, references]
+  );
+  const referenceTags = useMemo(() => getRefTags(references), [references]);
+  const hasVideoRef = activeReferences.some((r) => r.type === "video");
   const cost = estimateCost(params, hasVideoRef);
-  const imageRefs = references.filter((r) => r.type === "image");
+  const imageRefs = activeReferences.filter((r) => r.type === "image");
   const unsupportedHappyHorseRefs = isAlibaba
     ? references.filter(
         (r) =>
@@ -758,34 +916,29 @@ export default function GenerateView() {
       )
     : [];
   const happyHorseMode = currentModel.happyHorseMode;
-  const uploadPending = references.some((r) => r.uploading);
+  const uploadPending = activeReferences.some((r) => r.uploading);
   const isFirstLastMode = params.mode === "first_last_frame";
+  const isReferenceMode = params.mode === "reference";
   const showReferenceSlot =
-    !isFirstLastMode && (!isAlibaba || happyHorseMode !== "t2v");
-  const primaryReference =
-    references.find((ref) => ref.preview || ref.type === "image") ??
-    references[0];
-  const referencePreviewUrl =
-    primaryReference?.preview ??
-    (primaryReference?.type === "image" ? primaryReference.url : undefined);
+    isReferenceMode && (!isAlibaba || happyHorseMode !== "t2v");
   const composerModeLabel = isAlibaba
     ? currentModel.happyHorseMode === "t2v"
       ? "Text-to-video"
-      : currentModel.happyHorseMode === "i2v"
+    : currentModel.happyHorseMode === "i2v"
       ? "Image-to-video"
       : "Reference-to-video"
+    : params.mode === "text"
+    ? "Text"
     : params.mode === "reference"
     ? "Reference"
     : "Keyframe";
-  const summaryModeLabel = isAlibaba
-    ? currentModel.happyHorseMode === "t2v"
-      ? "TEXT"
-      : currentModel.happyHorseMode === "i2v"
-      ? "IMAGE"
-      : "REFERENCE"
+  const composerModeButtonLabel = isAlibaba
+    ? composerModeLabel
+    : params.mode === "text"
+    ? "Text"
     : params.mode === "first_last_frame"
-    ? "KEYFRAME"
-    : "REFERENCE";
+    ? "First/Last"
+    : "Reference";
   const summaryModelLabel = isAlibaba ? "HappyHorse" : currentModel.name;
   const summaryRatioLabel =
     currentModel.happyHorseMode === "i2v"
@@ -793,16 +946,35 @@ export default function GenerateView() {
       : params.ratio === "adaptive"
       ? "AUTO"
       : params.ratio;
+  const summaryDurationLabel =
+    params.durationType === "seconds" ? `${params.duration}s` : "SMART";
   const composerSummary = [
-    summaryModeLabel,
-    "VIDEO",
     summaryModelLabel,
     summaryRatioLabel,
+    summaryDurationLabel,
   ].join(" · ");
   const referenceFileAccept = isAlibaba
     ? "image/jpeg,image/jpg,image/png,image/bmp,image/webp"
     : "image/*,video/*,audio/*";
   const referenceFileMultiple = !(isAlibaba && happyHorseMode === "i2v");
+  const canToggleComposerMode = !isAlibaba;
+
+  const toggleComposerMode = useCallback(() => {
+    if (isAlibaba) return;
+    const currentIndex = Math.max(0, BYTEPLUS_MODE_CYCLE.indexOf(params.mode));
+    const nextMode =
+      BYTEPLUS_MODE_CYCLE[(currentIndex + 1) % BYTEPLUS_MODE_CYCLE.length];
+    setParams({
+      mode: nextMode,
+    });
+    setPromptExpanded(true);
+  }, [isAlibaba, params.mode, setParams]);
+
+  const toggleAudio = useCallback(() => {
+    if (isAlibaba) return;
+    setParams({ generateAudio: !params.generateAudio });
+    setPromptExpanded(true);
+  }, [isAlibaba, params.generateAudio, setParams]);
 
   const handleExternalReferenceSubmit = useCallback(() => {
     const value = externalReferenceValue.trim();
@@ -872,8 +1044,8 @@ export default function GenerateView() {
     }
   }, [showReferenceSlot]);
 
-  const hasFirstFrame = references.some((r) => r.role === "first_frame");
-  const hasLastFrame = references.some((r) => r.role === "last_frame");
+  const hasFirstFrame = activeReferences.some((r) => r.role === "first_frame");
+  const hasLastFrame = activeReferences.some((r) => r.role === "last_frame");
   const lastOnlyError = isFirstLastMode && hasLastFrame && !hasFirstFrame;
   const noFramesError = isFirstLastMode && !hasFirstFrame && !hasLastFrame;
   const happyHorseI2vError =
@@ -1011,7 +1183,7 @@ export default function GenerateView() {
     const singleParams = { ...params, outputCount: 1 };
     const trimmedPrompt = prompt.trim();
 
-    const snapshotRefs = references.map((r) => ({ ...r }));
+    const snapshotRefs = activeReferences.map((r) => ({ ...r }));
 
     const localIds: string[] = [];
     for (let i = 0; i < count; i++) {
@@ -1075,7 +1247,7 @@ export default function GenerateView() {
     if (!key) return;
 
     for (const localId of localIds) {
-      createGenerationTask(key, trimmedPrompt, references, singleParams)
+      createGenerationTask(key, trimmedPrompt, activeReferences, singleParams)
         .then((result) => {
           updateTask(localId, { taskId: result.id, status: "running" });
           pollTask(localId, result.id, singleParams);
@@ -1090,7 +1262,7 @@ export default function GenerateView() {
     demoMode,
     prompt,
     generateIssue,
-    references,
+    activeReferences,
     params,
     addTask,
     updateTask,
@@ -1146,7 +1318,101 @@ export default function GenerateView() {
                 className="reference-slots pointer-events-auto absolute left-0 z-50 flex items-end gap-3"
                 style={{ bottom: "calc(100% + 1.1rem)" }}
                 data-no-composer-drag
+                onPointerEnter={() => setIsAttachmentPasteArmed(true)}
+                onPointerLeave={() => setIsAttachmentPasteArmed(false)}
+                onFocusCapture={() => setIsAttachmentPasteArmed(true)}
+                onBlurCapture={(event) => {
+                  if (
+                    event.relatedTarget instanceof Node &&
+                    event.currentTarget.contains(event.relatedTarget)
+                  ) {
+                    return;
+                  }
+                  setIsAttachmentPasteArmed(false);
+                }}
               >
+                {references.map((ref) => {
+                  const previewUrl =
+                    ref.preview ??
+                    (ref.type === "image" && !ref.url.startsWith("asset://")
+                      ? ref.url
+                      : undefined);
+                  const tag = referenceTags[ref.id];
+
+                  return (
+                    <div
+                      key={ref.id}
+                      draggable={!ref.uploading}
+                      onDragStart={(event) =>
+                        handleReferenceDragStart(ref.id, event)
+                      }
+                      onDragEnter={(event) =>
+                        handleReferenceDragEnter(ref.id, event)
+                      }
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = event.dataTransfer
+                          .files?.length
+                          ? "copy"
+                          : "move";
+                      }}
+                      onDrop={(event) =>
+                        handleReferenceAssetDrop(ref.id, event)
+                      }
+                      onDragEnd={clearReferenceDrag}
+                      className={`reference-slot-card reference-attached-slot group relative flex h-24 w-24 cursor-grab flex-col items-center justify-center overflow-hidden rounded-2xl border p-3 text-center transition-all active:cursor-grabbing ${
+                        draggedReferenceId === ref.id ? "opacity-45" : ""
+                      } ${
+                        dragOverReferenceId === ref.id
+                          ? "reference-slot-card-over"
+                          : ""
+                      }`}
+                      title={`${tag ?? ""} ${ref.name}`.trim()}
+                    >
+                      {previewUrl ? (
+                        <img
+                          src={previewUrl}
+                          alt=""
+                          draggable={false}
+                          className="absolute inset-0 h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="reference-attached-icon relative z-10 flex h-11 w-11 items-center justify-center rounded-full">
+                          {ref.type === "video" ? (
+                            <Film className="h-5 w-5" />
+                          ) : ref.type === "audio" ? (
+                            <Music className="h-5 w-5" />
+                          ) : (
+                            <ImageIcon className="h-5 w-5" />
+                          )}
+                        </div>
+                      )}
+                      <div className="reference-attached-scrim absolute inset-x-0 bottom-0 top-1/2 z-10" />
+                      {ref.uploading && (
+                        <span className="reference-uploading-badge absolute left-2 top-2 z-20 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em]">
+                          Uploading
+                        </span>
+                      )}
+                      <span className="reference-attached-tag absolute bottom-2 left-2 right-2 z-20 truncate text-[10px] font-black uppercase leading-none tracking-[0.08em]">
+                        {tag ?? ref.name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          removeReference(ref.id);
+                        }}
+                        onMouseDown={(event) => event.stopPropagation()}
+                        className="reference-attached-remove absolute right-2 top-2 z-30 inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors"
+                        title={`${ref.name} 제거`}
+                        aria-label={`${ref.name} 제거`}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+
                 <button
                   type="button"
                   onClick={() => referenceFileInputRef.current?.click()}
@@ -1163,17 +1429,9 @@ export default function GenerateView() {
                   onDrop={handleReferenceSlotDrop}
                   className={`reference-slot-card reference-file-slot group relative flex h-24 w-24 flex-col items-center justify-center overflow-hidden rounded-2xl border p-3 text-center transition-all ${
                     isReferenceSlotOver ? "reference-slot-card-over" : ""
-                  } ${primaryReference ? "reference-slot-card-filled" : ""}`}
+                  }`}
                   title="파일 첨부"
                 >
-                  {referencePreviewUrl && (
-                    <img
-                      src={referencePreviewUrl}
-                      alt=""
-                      draggable={false}
-                      className="absolute inset-0 h-full w-full object-cover opacity-75"
-                    />
-                  )}
                   <div className="reference-slot-scrim absolute inset-0" />
                   <div className="reference-slot-plus relative z-10 flex h-10 w-10 items-center justify-center rounded-full">
                     <Plus className="h-6 w-6" />
@@ -1261,6 +1519,18 @@ export default function GenerateView() {
                 className="keyframe-slots pointer-events-auto absolute left-0 z-50 flex items-end gap-3"
                 style={{ bottom: "calc(100% + 1.1rem)" }}
                 data-no-composer-drag
+                onPointerEnter={() => setIsAttachmentPasteArmed(true)}
+                onPointerLeave={() => setIsAttachmentPasteArmed(false)}
+                onFocusCapture={() => setIsAttachmentPasteArmed(true)}
+                onBlurCapture={(event) => {
+                  if (
+                    event.relatedTarget instanceof Node &&
+                    event.currentTarget.contains(event.relatedTarget)
+                  ) {
+                    return;
+                  }
+                  setIsAttachmentPasteArmed(false);
+                }}
               >
                 {(["first_frame", "last_frame"] as const).map((role) => {
                   const frame = references.find((ref) => ref.role === role);
@@ -1318,7 +1588,7 @@ export default function GenerateView() {
                         setDraggedFrameRole(null);
                         setDragOverFrameRole(null);
                       }}
-                      className={`keyframe-slot-card group relative flex h-24 w-24 cursor-grab flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border p-3 text-center transition-all active:cursor-grabbing ${
+                      className={`keyframe-slot-card group relative flex h-24 w-24 cursor-grab flex-col items-center justify-center overflow-hidden rounded-2xl border p-3 text-center transition-all active:cursor-grabbing ${
                         draggedFrameRole === role ? "opacity-45" : ""
                       } ${
                         dragOverFrameRole === role
@@ -1340,11 +1610,11 @@ export default function GenerateView() {
                         />
                       )}
                       <div className="keyframe-slot-scrim absolute inset-0" />
-                      <div className="keyframe-slot-plus relative z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/12 text-white shadow-[inset_0_1px_0_rgb(255_255_255_/_0.18)]">
-                        <Plus className="h-6 w-6" />
+                      <div className="keyframe-slot-plus relative z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/12 text-white shadow-[inset_0_1px_0_rgb(255_255_255_/_0.18)]">
+                        <Plus className="h-6 w-6 shrink-0" />
                       </div>
-                      <span className="relative z-10 whitespace-pre-line text-xs font-black uppercase leading-tight tracking-[0.06em] text-white/82">
-                        {meta.label.replace(" ", "\n")}
+                      <span className="keyframe-slot-label absolute bottom-3 left-0 right-0 z-10 text-[11px] font-black uppercase leading-none tracking-[0.08em] text-white/55">
+                        {meta.label}
                       </span>
                       {frame && (
                         <button
@@ -1387,20 +1657,6 @@ export default function GenerateView() {
                 />
               </div>
             )}
-            <button
-              type="button"
-              aria-label="프롬프트 창 이동"
-              onPointerDown={handleComposerPointerDown}
-              onPointerMove={handleComposerPointerMove}
-              onPointerUp={finishComposerDrag}
-              onPointerCancel={finishComposerDrag}
-              className={`glass-chip absolute -top-8 left-1/2 z-30 -translate-x-1/2 pointer-events-auto h-5 w-11 rounded-full flex items-center justify-center text-gray-400 hover:text-primary-600 hover:border-primary-200 cursor-grab active:cursor-grabbing transition-colors ${
-                isComposerDragging ? "text-primary-600 border-primary-300" : ""
-              }`}
-              title="프롬프트 창 이동"
-            >
-              <GripHorizontal className="w-3.5 h-3.5" />
-            </button>
             <div className="pointer-events-auto">
               <div
                 className={`composer-shell glass-card subtle-glow relative cursor-move rounded-2xl border overflow-hidden transition-[border-color,box-shadow] duration-200 ${
@@ -1466,11 +1722,15 @@ export default function GenerateView() {
                             : currentModel.happyHorseMode === "i2v"
                             ? "Describe motion from the attached image..."
                             : "Describe the video you want to create..."
+                          : params.mode === "text"
+                          ? "Describe the video you want to create..."
                           : params.mode === "first_last_frame"
                           ? "Describe camera or action in the scene..."
                           : "Describe your scene with visual references..."
                         : isAlibaba
                         ? "Describe the video..."
+                        : params.mode === "text"
+                        ? "Describe the video you want to create..."
                         : params.mode === "first_last_frame"
                         ? "Describe camera or action in the scene..."
                         : "Describe your scene with visual references..."
@@ -1505,38 +1765,46 @@ export default function GenerateView() {
                 {/* Bottom Bar */}
                 <div
                   className="px-4 pb-3 flex items-center justify-between gap-3"
-                  data-no-composer-drag
                 >
-                  {isExpanded ? (
-                    <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-gray-500 flex-wrap">
-                      <span className="glass-chip flex items-center gap-1 px-2 py-1 text-primary-600 rounded-lg font-medium text-[11px]">
-                        {composerModeLabel}
-                      </span>
-
-                      <span className="text-gray-300">|</span>
-                      <span>{params.ratio === "adaptive" ? "Auto" : params.ratio}</span>
-                      <span className="text-gray-300">|</span>
-                      <span>{params.resolution}</span>
-                      <span className="text-gray-300">|</span>
-                      <span>
-                        {params.durationType === "seconds"
-                          ? `${params.duration}s`
-                          : "Smart"}
-                      </span>
-                      <span className="text-gray-300">|</span>
-                      <span>{params.outputCount} videos</span>
-                      {params.generateAudio && !isAlibaba && (
-                        <>
-                          <span className="text-gray-300">|</span>
-                          <span className="px-1.5 py-0.5 border border-primary-300 text-primary-600 rounded font-medium text-[10px]">
-                            Sound
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  ) : (
-                    <div aria-hidden="true" />
-                  )}
+                  <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-gray-500 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={toggleComposerMode}
+                      disabled={!canToggleComposerMode}
+                      data-no-composer-drag
+                      className={`composer-action-chip composer-mode-chip ${
+                        canToggleComposerMode
+                          ? "composer-action-chip-active"
+                          : ""
+                      }`}
+                      title={
+                        canToggleComposerMode
+                          ? "Reference / First-Last Frame 전환"
+                          : composerModeLabel
+                      }
+                    >
+                      {composerModeButtonLabel}
+                    </button>
+                    {!isAlibaba && (
+                      <button
+                        type="button"
+                        onClick={toggleAudio}
+                        data-no-composer-drag
+                        className={`composer-action-chip composer-sound-chip ${
+                          params.generateAudio ? "composer-action-chip-active" : ""
+                        }`}
+                        title={params.generateAudio ? "Sound 끄기" : "Sound 켜기"}
+                        aria-pressed={params.generateAudio}
+                      >
+                        {params.generateAudio ? (
+                          <Volume2 className="h-3.5 w-3.5" />
+                        ) : (
+                          <VolumeX className="h-3.5 w-3.5" />
+                        )}
+                        <span>Sound</span>
+                      </button>
+                    )}
+                  </div>
 
                   <div className="flex min-w-0 items-center gap-2 shrink-0 ml-2">
                     <span className="hidden text-[10px] text-gray-400 sm:inline">

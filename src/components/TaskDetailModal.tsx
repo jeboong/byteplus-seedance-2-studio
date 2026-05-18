@@ -52,15 +52,13 @@ function getUsageLabel(task: GenerationTask): string | null {
 
 function ModalGenerationState({
   status,
-  modelLabel,
 }: {
   status: string;
-  modelLabel: string;
 }) {
   return (
     <GenerationFX
       label={status === "running" ? "Generating" : status}
-      modelLabel={modelLabel}
+      tone={status === "pending" ? "neutral" : "default"}
       className="w-64 h-40 rounded-2xl"
     />
   );
@@ -252,7 +250,7 @@ export default function TaskDetailModal({
               className="w-full max-h-[90vh] object-contain"
             />
           ) : isGenerating ? (
-            <ModalGenerationState status={task.status} modelLabel={taskModel.name} />
+            <ModalGenerationState status={task.status} />
           ) : (
             <div className="text-white/70 text-sm flex flex-col items-center gap-2 py-12">
               <Loader2
@@ -371,7 +369,9 @@ export default function TaskDetailModal({
 
               <dt className="text-gray-400">Mode</dt>
               <dd className="text-gray-700">
-                {task.params.mode === "first_last_frame"
+                {task.params.mode === "text"
+                  ? "Text"
+                  : task.params.mode === "first_last_frame"
                   ? "First & Last"
                   : "Reference"}
               </dd>

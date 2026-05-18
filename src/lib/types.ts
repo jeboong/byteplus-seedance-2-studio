@@ -1,4 +1,4 @@
-export type GenerationMode = "reference" | "first_last_frame";
+export type GenerationMode = "text" | "reference" | "first_last_frame";
 
 export type AspectRatio =
   | "adaptive"
