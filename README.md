@@ -1,40 +1,75 @@
 # BytePlus Seedance 2.0 Studio
 
-> ⚠ **개발용 비공식 클라이언트입니다.** BytePlus ModelArk의 Seedance 2.0 영상 생성 API를 직접 호출하는 Next.js 웹 앱이며, 프로덕션 환경 사용을 권장하지 않습니다.
+개발용 비공식 영상 생성 클라이언트입니다. Next.js App Router 기반으로 BytePlus ModelArk Seedance 2.0 API와 Alibaba ModelStudio HappyHorse API를 같은 UI에서 호출합니다.
 
-원본 [`jeboong/seedance-2-studio`](https://github.com/jeboong/seedance-2-studio) (Volcengine Ark)를 BytePlus ModelArk API로 포팅한 버전입니다. 모델 ID, 엔드포인트, 인증 체계, Asset Library API를 BytePlus 사양에 맞게 모두 재구성했습니다.
+원본 [`jeboong/seedance-2-studio`](https://github.com/jeboong/seedance-2-studio)를 BytePlus ModelArk 중심으로 포팅한 뒤, HappyHorse 모델과 현재 컴포저 UX를 추가한 버전입니다. 프로덕션 서비스로 바로 쓰기보다는 API 테스트, 데모, 내부 운영 도구 용도로 사용하는 것을 권장합니다.
 
 ---
 
 ## 주요 기능
 
 ### 영상 생성
-- **모델**: Seedance 2.0 (`dreamina-seedance-2-0-260128`) / Seedance 2.0 Fast
-- **모드**: Reference 모드 / First & Last Frame 모드
-- **해상도**: 480p · 720p (공식) · **1080p (BETA, 실험)**
-- **종횡비**: 21:9 / 16:9 / 4:3 / 1:1 / 3:4 / 9:16 / Auto(adaptive)
-- **길이**: 4–15초 또는 Smart Length(`-1`)
-- **추가 옵션**: Audio 동시 생성 / 워터마크 토글 / Last Frame 반환(연속 영상 체이닝) / Seed 고정 / 생성 타임아웃
 
-### 첨부 파일 (멀티모달 입력)
-| 타입 | 로컬 파일 | URL | `asset://` |
+- **BytePlus ModelArk**
+  - Seedance 2.0: `dreamina-seedance-2-0-260128`
+  - Seedance 2.0 Fast: `dreamina-seedance-2-0-fast-260128`
+- **Alibaba ModelStudio**
+  - HappyHorse 1.0 Text-to-video: `happyhorse-1.0-t2v`
+  - HappyHorse 1.0 Image-to-video: `happyhorse-1.0-i2v`
+  - HappyHorse 1.0 Reference-to-video: `happyhorse-1.0-r2v`
+- **BytePlus 모드**: Text / Reference / First & Last Frame
+- **HappyHorse 모드**: T2V / I2V / R2V 모델별 전용 입력 흐름
+- **해상도**: 480p / 720p / 1080p
+  - Seedance 2.0 Fast는 1080p 미지원
+  - HappyHorse는 720P / 1080P만 사용
+- **종횡비**
+  - BytePlus: Adaptive / 21:9 / 16:9 / 4:3 / 1:1 / 3:4 / 9:16
+  - HappyHorse: 16:9 / 9:16 / 1:1 / 4:3 / 3:4
+- **길이**
+  - BytePlus: 4-15초 또는 Smart Length
+  - HappyHorse: 3-15초
+- **추가 옵션**: 출력 개수, 사운드 생성(BytePlus), 워터마크, Last Frame 반환(BytePlus), Seed 고정, 생성 타임아웃
+
+### 입력과 첨부
+
+| 제공자 | 지원 입력 | 로컬 파일 처리 | URL/Asset 입력 |
 |---|---|---|---|
-| **Image** | ✅ Base64 (≤30MB, 무손실) | ✅ | ✅ |
-| **Video** | ✅ Files API 업로드 후 URL 자동 변환 (≤50MB) | ✅ | ✅ |
-| **Audio** | ✅ Base64 (≤15MB) | ✅ | ✅ |
+| BytePlus | 이미지 / 비디오 / 오디오 | 이미지는 Base64, 오디오는 Base64, 비디오는 Files API 업로드 후 URL 사용 | HTTP(S), `asset://`, `oss://` 형식 입력 가능 |
+| HappyHorse T2V | 프롬프트 | 첨부 없음 | 첨부 없음 |
+| HappyHorse I2V | 이미지 1개 + 프롬프트 | 이미지를 ModelStudio 임시 OSS로 업로드 | HTTP(S) 또는 `oss://` |
+| HappyHorse R2V | 이미지 1-9개 + 프롬프트 | 이미지를 ModelStudio 임시 OSS로 업로드 | HTTP(S) 또는 `oss://` |
 
-> **참고**: 비디오는 BytePlus 명세상 URL만 허용되므로, 로컬 파일은 `/api/upload`가 BytePlus Files API(`/files`)로 업로드하고 다운로드 URL을 받아와 자동으로 사용합니다.
+파일 제한:
 
-### Asset Library 연동
-- **Authorization Asset Group** (실사 인물): 콘솔 QR 코드 인증 후 `asset://` URI 입력 → 얼굴 감지 우회
-- **General Asset Group**: 콘솔에서 Asset Service 활성화 후 그룹 생성/관리/업로드 가능 (UI 통합)
-- AK/SK 기반 HMAC-SHA256 서명 (control-plane API: `open.byteplusapi.com`)
+- BytePlus 이미지: 30MB 이하
+- BytePlus 비디오: 50MB 이하
+- BytePlus 오디오: 15MB 이하
+- HappyHorse 이미지: JPEG/JPG/PNG/BMP/WEBP, 10MB 이하
+- HappyHorse I2V 이미지는 가로/세로 300px 이상, 종횡비 1:2.5-2.5:1
+- HappyHorse R2V 이미지는 짧은 변 400px 이상
 
-### 태스크 관리
-- 생성 태스크 자동 폴링(10s) · 로컬스토리지 영속성
-- 태스크 목록/상세 조회 · 진행 중 태스크 취소 · 완료 태스크 삭제
-- `usage` (token 사용량), `seed`, 실제 출력 ratio/resolution/duration 표시
-- 실시간 토큰 및 원화 비용 추정
+### 작업 관리
+
+- 생성 작업 자동 폴링
+- 작업 상태: pending / queued / running / succeeded / failed / cancelled / expired
+- 작업 카드 그리드/리스트 보기
+- 상세 모달에서 프롬프트, 레퍼런스, 실제 출력 메타데이터 확인
+- BytePlus 작업 취소/삭제
+- 완료 작업의 영상 URL, Last Frame URL, seed, usage 표시
+- LocalStorage 기반 작업/설정 보존
+
+### 토큰 리포팅
+
+- 실제 BytePlus 생성이 `succeeded` 상태가 되고 `usage.total_tokens`가 있을 때만 `/api/usage-report`로 보고합니다.
+- 서버 라우트는 아래 운영 Apps Script URL 한 곳으로만 POST합니다.
+
+```text
+https://script.google.com/macros/s/AKfycbyC53V4K-CHJnP86qIbBP0WmXZ4cDD9D3CFVmd8otL4ZThzpQ7RKhnCeIXgDu4y7CFrnQ/exec
+```
+
+- 테스트 트래커 URL 경로는 제거되어 있습니다.
+- 데모 모드와 HappyHorse 작업은 토큰 리포팅을 보내지 않습니다.
+- API 키는 리포팅 payload에 포함하지 않습니다. 기본 payload는 `team`, `task_id`, `total_tokens`, `completion_tokens`, `source`, `timestamp`입니다.
 
 ---
 
@@ -42,112 +77,131 @@
 
 | 항목 | 기술 |
 |------|------|
-| 프레임워크 | Next.js 14 (App Router) |
+| 프레임워크 | Next.js 14 App Router |
 | 언어 | TypeScript |
 | UI | React 18 + Tailwind CSS |
-| 상태관리 | Zustand (persist) |
+| 상태관리 | Zustand |
 | 아이콘 | Lucide React |
-| 인증 | API Key (data-plane) + AK/SK HMAC-SHA256 (control-plane) |
+| BytePlus 인증 | ModelArk API Key, AK/SK HMAC 서명 |
+| Alibaba 인증 | ModelStudio API Key |
 
 ---
 
 ## 시작하기
 
 ### 1. 의존성 설치
+
 ```bash
 npm install
 ```
 
-### 2. 환경 변수 설정 (`.env.local`)
-```bash
-# BytePlus Asset Library API용 (control-plane)
-# https://console.byteplus.com/iam/keymanage/ 에서 발급
+### 2. 환경 변수 설정
+
+`.env.local`은 Asset Library와 서버 측 보조 API에만 필요합니다. 영상 생성용 API Key는 앱 온보딩에서 입력하며 브라우저 LocalStorage에 저장됩니다.
+
+```env
+# BytePlus Asset Library control-plane API용
 BYTEPLUS_AK=your_access_key_here
 BYTEPLUS_SK=your_secret_key_here
-```
 
-> Asset Library 기능을 쓰지 않으면 위 두 값은 생략 가능합니다.
+# 선택: usage tracker payload 라벨
+USAGE_TRACKER_TEAM=6팀
+USAGE_TRACKER_SOURCE=external
+```
 
 ### 3. 개발 서버 실행
 
-**Windows (원클릭)**:
+Windows 원클릭 실행:
+
 ```bat
 start.bat
 ```
-- Node.js 체크 → `npm install`(필요시) → 3030 포트 점유 프로세스 자동 종료 → 브라우저 자동 오픈 → `npx next dev --port 3030` 실행
 
-**수동 실행**:
+`start.bat`은 Node.js 확인, 필요 시 `npm install`, 3030 포트 정리, 브라우저 오픈, `npx next dev --port 3030` 실행을 처리합니다.
+
+수동 실행:
+
 ```bash
 npm run dev -- --port 3030
 ```
 
-브라우저에서 [`http://localhost:3030`](http://localhost:3030) 접속.
+접속 주소:
 
-### 4. ModelArk API 키 입력
-앱 첫 진입 시 온보딩 화면에서 BytePlus ModelArk API 키를 입력합니다.
-- 발급: [BytePlus ModelArk 콘솔](https://console.byteplus.com/ark) → API Key 관리
-- 키는 브라우저 LocalStorage에만 저장되며, API 호출 시 서버 사이드 프록시(`/api/*`)를 거쳐 BytePlus로 전달됩니다.
-- 소스 코드에 하드코딩된 키는 **없습니다**.
+```text
+http://localhost:3030
+```
+
+### 4. API 키 입력
+
+앱 첫 진입 시 온보딩에서 사용할 제공자를 선택하고 키를 입력합니다.
+
+- BytePlus ModelArk: Seedance 2.0 생성, BytePlus 파일 업로드, 작업 조회/삭제
+- Alibaba ModelStudio: HappyHorse 생성, HappyHorse 임시 OSS 이미지 업로드
+- Browse/Demo 모드: 키 없이 UI를 둘러보거나 데모 결과를 생성
+
+키는 브라우저 LocalStorage에 저장되고, 실제 API 호출은 `/api/*` 서버 라우트를 통해 프록시됩니다. 생성 API 키는 소스 코드에 하드코딩하지 않습니다.
 
 ---
 
 ## 프로젝트 구조
 
-```
+```text
 src/
 ├── app/
 │   ├── api/
-│   │   ├── generate/route.ts      # 영상 생성 요청 (data-plane)
-│   │   ├── task/[id]/route.ts     # 태스크 조회/삭제
-│   │   ├── tasks/route.ts         # 태스크 목록
-│   │   ├── upload/route.ts        # Files API 업로드 (+ 다운로드 URL)
-│   │   └── assets/route.ts        # Asset Library (AK/SK HMAC 서명)
+│   │   ├── generate/route.ts        # BytePlus / Alibaba 생성 프록시
+│   │   ├── task/[id]/route.ts       # 작업 조회, BytePlus 작업 삭제
+│   │   ├── tasks/route.ts           # BytePlus 작업 목록
+│   │   ├── upload/route.ts          # BytePlus Files API 업로드
+│   │   ├── alibaba-upload/route.ts  # HappyHorse 임시 OSS 업로드
+│   │   ├── assets/route.ts          # BytePlus Asset Library
+│   │   └── usage-report/route.ts    # BytePlus usage tracker POST
 │   ├── layout.tsx
 │   └── page.tsx
 ├── components/
-│   ├── GenerateView.tsx           # 메인 뷰 (프롬프트, 모드, 비용 계산)
-│   ├── Header.tsx
-│   ├── ModelParams.tsx            # 모델 파라미터 설정 패널
-│   ├── Onboarding.tsx             # API 키 입력
-│   ├── ReferenceUpload.tsx        # 레퍼런스 첨부 + Asset Manager
-│   └── VideoResult.tsx            # 결과 카드 (그리드/리스트, 취소/삭제)
+│   ├── GenerateView.tsx             # 메인 생성 UI와 작업 폴링
+│   ├── Header.tsx                   # 앱 메뉴, 데모 모드, 설정
+│   ├── ModelParams.tsx              # 모델/파라미터 설정
+│   ├── Onboarding.tsx               # API 키 입력과 시작 흐름
+│   ├── ReferenceUpload.tsx          # 레퍼런스 첨부와 Asset Manager
+│   ├── TaskDetailModal.tsx          # 작업 상세 보기
+│   └── VideoResult.tsx              # 결과 카드
 └── lib/
-    ├── api.ts                     # 클라이언트 fetch wrapper
-    ├── byteplus-sign.ts           # HMAC-SHA256 서명 유틸 (control-plane)
-    ├── store.ts                   # Zustand 전역 상태
-    └── types.ts                   # 타입, 모델 카탈로그, 비용 계산
+    ├── api.ts                       # 클라이언트 fetch wrapper와 payload 생성
+    ├── byteplus-sign.ts             # BytePlus AK/SK HMAC 서명
+    ├── generationConfirm.ts         # 생성 확인 설정
+    ├── refTags.ts                   # @img1/@vid1/@aud1 태그 확장
+    ├── store.ts                     # Zustand 상태와 LocalStorage 복원
+    ├── types.ts                     # 모델 카탈로그, 타입, 비용 계산
+    └── useFileUpload.ts             # BytePlus/HappyHorse 첨부 처리
 ```
 
 ---
 
 ## API 엔드포인트 매핑
 
-| 기능 | BytePlus 엔드포인트 | 인증 |
-|------|---------------------|------|
-| 영상 생성 | `POST ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks` | Bearer (API Key) |
-| 태스크 조회 | `GET .../tasks/{id}` | Bearer |
-| 태스크 목록 | `GET .../tasks` | Bearer |
-| 태스크 취소/삭제 | `DELETE .../tasks/{id}` | Bearer |
-| 파일 업로드 | `POST .../files` | Bearer |
-| Asset 그룹 관리 | `open.byteplusapi.com/?Action=*AssetGroup` | AK/SK HMAC |
-| Asset 생성/조회/삭제 | `open.byteplusapi.com/?Action=*Asset` | AK/SK HMAC |
+| 앱 라우트 | 외부 API | 인증 |
+|---|---|---|
+| `POST /api/generate` | BytePlus `POST /api/v3/contents/generations/tasks` | Bearer ModelArk API Key |
+| `POST /api/generate` | Alibaba ModelStudio HappyHorse 영상 생성 API | Bearer ModelStudio API Key |
+| `GET /api/task/[id]` | BytePlus 작업 조회 또는 Alibaba ModelStudio 작업 조회 | Bearer API Key |
+| `DELETE /api/task/[id]` | BytePlus `DELETE /contents/generations/tasks/{id}` | Bearer ModelArk API Key |
+| `GET /api/tasks` | BytePlus `GET /contents/generations/tasks` | Bearer ModelArk API Key |
+| `POST /api/upload` | BytePlus `POST /files` + file content URL 조회 | Bearer ModelArk API Key |
+| `POST /api/alibaba-upload` | Alibaba ModelStudio 임시 업로드 policy + OSS 업로드 | Bearer ModelStudio API Key |
+| `POST /api/assets` | BytePlus Asset Library control-plane actions | AK/SK HMAC |
+| `POST /api/usage-report` | Google Apps Script usage tracker | 앱 서버에서 고정 URL로 POST |
 
 ---
 
-## 알려진 제한사항 / 사양 메모
+## 제한사항과 운영 메모
 
-### First / Last Frame 모드
-- `last_frame`만 단독으로는 영상 생성 불가 → Generate 버튼 비활성화 (UI에서 차단)
-- 출력 해상도는 사용자가 지정한 `resolution × ratio` 조합으로 결정되며, 입력 이미지가 자동 크롭됨
-- `ratio: "adaptive"` 권장 (첫 프레임 비율 자동 채택)
-
-### Asset Library
-- **General Asset Group** 생성은 BytePlus 콘솔에서 "Asset Service" 활성화가 선행되어야 합니다 (`NotFound.ServiceNotOpen` 응답 시).
-- **실사 인물** 자산은 콘솔의 모바일 QR 코드 인증 절차로만 등록 가능 (보안 정책상 프로그래밍 업로드 차단).
-- `arkbff-ap-southeast1.console.byteplus.com` 콘솔 BFF는 브라우저 세션에 종속 → AK/SK로 접근 불가.
-
-### 1080p
-- 공식 문서에 명시되지 않은 실험 옵션입니다. API가 거부하면 720p로 전환하세요.
+- 이 앱은 개발용 클라이언트입니다. 서버 라우트가 사용자 입력 API 키를 외부 제공자에 전달하므로 배포 시 접근 통제와 로그 정책을 별도로 점검해야 합니다.
+- HappyHorse 작업 삭제는 현재 앱에서 외부 삭제 API를 호출하지 않고 204로 처리합니다.
+- BytePlus Files API가 공개 다운로드 URL을 반환하지 않으면 로컬 비디오 첨부가 실패할 수 있습니다. 이 경우 공개 HTTP(S) URL 또는 `asset://` 입력을 사용하세요.
+- BytePlus Asset Library의 General Asset Group은 콘솔에서 Asset Service 활성화가 필요합니다.
+- 실사 인물 자산은 BytePlus 콘솔의 모바일 QR 인증 플로우가 필요하며, 일반 프로그래밍 업로드로 대체할 수 없습니다.
+- 1080p와 일부 모델 옵션은 제공자 응답 정책에 따라 거부될 수 있습니다.
 
 ---
 
