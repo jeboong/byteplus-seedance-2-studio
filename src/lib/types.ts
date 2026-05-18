@@ -118,6 +118,7 @@ export interface ModelParams {
   watermark: boolean;
   rendering: boolean;
   returnLastFrame: boolean;
+  urlAssetAttach: boolean;
   seed: string;
   internetSearch: boolean;
   generationTimeout: number;
@@ -147,6 +148,7 @@ export interface GenerationTask {
   params: ModelParams;
   references?: ReferenceAsset[];
   createdAt: number;
+  completedAt?: number;
   seed?: number;
   usage?: {
     completion_tokens?: number;
@@ -175,6 +177,7 @@ export const DEFAULT_PARAMS: ModelParams = {
   watermark: false,
   rendering: true,
   returnLastFrame: false,
+  urlAssetAttach: false,
   seed: "",
   internetSearch: false,
   generationTimeout: 48,

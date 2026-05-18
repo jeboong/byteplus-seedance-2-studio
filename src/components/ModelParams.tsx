@@ -36,8 +36,8 @@ function Toggle({
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors ${
-        checked ? "bg-primary-500" : "bg-gray-200"
+      className={`param-toggle relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors ${
+        checked ? "param-toggle-checked" : "param-toggle-idle"
       }`}
     >
       <span
@@ -103,6 +103,7 @@ export default function ModelParams({
   const durationMin = minDurationForModel(params.modelId);
   const durationProgress = rangeProgress(params.duration, durationMin, 15);
   const outputProgress = rangeProgress(params.outputCount, 1, 4);
+  const timeoutProgress = rangeProgress(params.generationTimeout, 1, 72);
   const canUseSmartDuration = supportsSmartDuration(params.modelId);
   const visibleRatios = ASPECT_RATIOS.filter((r) =>
     supportsAspectRatio(params.modelId, r.value)
@@ -558,34 +559,7 @@ export default function ModelParams({
           <label className="block text-xs font-medium text-gray-500 mb-2">
             Video Duration
           </label>
-          <div className="param-segmented grid grid-cols-2 gap-1 bg-surface-100 rounded-xl p-1 mb-3">
-            <button
-              onClick={() => setParams({ durationType: "seconds" })}
-              className={`param-option py-2 rounded-lg text-xs font-medium transition-all ${
-                params.durationType === "seconds"
-                  ? "param-choice-selected text-gray-800"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              Seconds
-            </button>
-            <button
-              onClick={() => setParams({ durationType: "smart" })}
-              disabled={!canUseSmartDuration}
-              className={`param-option py-2 rounded-lg text-xs font-medium transition-all ${
-                params.durationType === "smart"
-                  ? "param-choice-selected text-gray-800"
-                  : "text-gray-500 hover:text-gray-700"
-              } ${!canUseSmartDuration ? "opacity-40 cursor-not-allowed hover:text-gray-500" : ""}`}
-            >
-              Smart length
-            </button>
-          </div>
-          <div
-            className={`flex items-center gap-3 transition-opacity ${
-              params.durationType === "smart" ? "opacity-55" : ""
-            }`}
-          >
+          <div className="flex items-center gap-3">
             <input
               type="range"
               min={durationMin}
@@ -594,20 +568,62 @@ export default function ModelParams({
               value={params.duration}
               disabled={params.durationType === "smart"}
               onChange={(e) =>
-                setParams({ duration: Number(e.target.value) })
+                setParams({
+                  duration: Number(e.target.value),
+                  durationType: "seconds",
+                })
               }
               style={
-                { "--range-progress": `${durationProgress}%` } as CSSProperties
+                {
+                  "--range-progress":
+                    params.durationType === "smart"
+                      ? "0%"
+                      : `${durationProgress}%`,
+                } as CSSProperties
               }
-              className="range-control flex-1 h-1.5"
+              className={`range-control flex-1 h-1.5 ${
+                params.durationType === "smart" ? "range-control-auto" : ""
+              }`}
             />
-            <div className="flex items-center gap-1 bg-surface-100 rounded-lg px-3 py-1.5 min-w-[60px] justify-center">
-              <span className="text-sm font-medium text-gray-700">
-                {params.durationType === "smart" ? "Auto" : params.duration}
-              </span>
-              {params.durationType === "seconds" && (
+            <div className="duration-control-group flex items-center gap-2">
+              <div
+                className={`duration-value-chip flex items-center gap-1 bg-surface-100 rounded-lg px-3 py-1.5 min-w-[60px] justify-center ${
+                  params.durationType === "smart"
+                    ? "duration-value-chip-auto"
+                    : ""
+                }`}
+              >
+                <span className="text-sm font-medium text-gray-700">
+                  {params.duration}
+                </span>
                 <span className="text-xs text-gray-400">s</span>
-              )}
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setParams({
+                    durationType:
+                      params.durationType === "smart" ? "seconds" : "smart",
+                  })
+                }
+                disabled={!canUseSmartDuration}
+                className={`duration-auto-button rounded-lg px-3 py-1.5 text-xs font-bold tracking-[0.08em] transition-all ${
+                  params.durationType === "smart"
+                    ? "duration-auto-button-active"
+                    : ""
+                } ${
+                  !canUseSmartDuration
+                    ? "cursor-not-allowed opacity-40"
+                    : ""
+                }`}
+                title={
+                  canUseSmartDuration
+                    ? "Smart length"
+                    : "현재 모델에서는 Smart length를 지원하지 않습니다."
+                }
+              >
+                AUTO
+              </button>
             </div>
           </div>
         </section>
@@ -673,6 +689,18 @@ export default function ModelParams({
             />
           </div>
           )}
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-sm text-gray-700">URL / Asset Attach</span>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                Show the URL / asset:// attachment slot in the composer.
+              </p>
+            </div>
+            <Toggle
+              checked={params.urlAssetAttach}
+              onChange={(v) => setParams({ urlAssetAttach: v })}
+            />
+          </div>
         </section>
 
         <hr className="border-white/50" />
@@ -736,7 +764,12 @@ export default function ModelParams({
                         generationTimeout: Number(e.target.value),
                       })
                     }
-                    className="flex-1 accent-primary-500 h-1.5"
+                    style={
+                      {
+                        "--range-progress": `${timeoutProgress}%`,
+                      } as CSSProperties
+                    }
+                    className="range-control flex-1 h-1.5"
                   />
                   <div className="flex items-center gap-1 bg-surface-100 rounded-lg px-3 py-1.5 min-w-[75px] justify-center">
                     <span className="text-sm font-medium text-gray-700">

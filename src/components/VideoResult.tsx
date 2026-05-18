@@ -25,7 +25,6 @@ import {
   Copy,
   RotateCcw,
   Maximize2,
-  Minimize2,
   Search,
   Paperclip,
   Film,
@@ -69,6 +68,26 @@ function cssAspectRatio(ratio?: string): string {
     default:
       return "16 / 9";
   }
+}
+
+function formatElapsedMs(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function taskIsInProgress(task: GenerationTask): boolean {
+  return ["pending", "queued", "running"].includes(task.status);
+}
+
+function getTaskElapsedLabel(
+  task: GenerationTask,
+  now = Date.now()
+): string | null {
+  const end = task.completedAt ?? (taskIsInProgress(task) ? now : undefined);
+  if (!end || !task.createdAt) return null;
+  return formatElapsedMs(end - task.createdAt);
 }
 
 function ReferenceThumb({
@@ -309,7 +328,6 @@ function HoverVideo({
           loop
           playsInline
           preload="metadata"
-          controls
           className="absolute inset-0 w-full h-full object-cover"
           onMouseEnter={play}
           onMouseLeave={pause}
@@ -431,6 +449,12 @@ function InlineTaskDetails({
           <dd>{task.actualRatio || task.params.ratio}</dd>
           <dt>Resolution</dt>
           <dd>{task.actualResolution || task.params.resolution}</dd>
+          {getTaskElapsedLabel(task) && (
+            <>
+              <dt>Elapsed</dt>
+              <dd>{getTaskElapsedLabel(task)}</dd>
+            </>
+          )}
           <dt>Status</dt>
           <dd>{task.status}</dd>
           {typeof task.seed === "number" && (
@@ -479,6 +503,7 @@ function TaskCard({
     y: number;
   } | null>(null);
   const [previewAsset, setPreviewAsset] = useState<ReferenceAsset | null>(null);
+  const mediaRef = useRef<HTMLDivElement>(null);
   const downloadKey = getTaskDownloadKey(task);
   const [downloaded, setDownloaded] = useState(false);
 
@@ -590,6 +615,54 @@ function TaskCard({
   const isGenerating = ["pending", "queued", "running"].includes(task.status);
   const taskModel = getModelOption(task.params.modelId);
   const canExpandMedia = Boolean(isFinished);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!isGenerating) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [isGenerating]);
+
+  const generationElapsedLabel = getTaskElapsedLabel(task, now);
+
+  const handleFullscreen = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const video = mediaRef.current?.querySelector("video");
+      const target = video ?? mediaRef.current;
+      if (!target) return;
+
+      if (video) {
+        video.controls = true;
+        const removeControls = () => {
+          if (!document.fullscreenElement) {
+            video.controls = false;
+            document.removeEventListener("fullscreenchange", removeControls);
+          }
+        };
+        document.addEventListener("fullscreenchange", removeControls);
+        const playPromise = video.play();
+        if (playPromise && typeof playPromise.catch === "function") {
+          playPromise.catch(() => {});
+        }
+      }
+
+      const requestFullscreen =
+        target.requestFullscreen ??
+        (
+          target as HTMLElement & {
+            webkitRequestFullscreen?: () => Promise<void> | void;
+          }
+        ).webkitRequestFullscreen;
+      if (requestFullscreen) {
+        void requestFullscreen.call(target);
+      } else if (task.videoUrl) {
+        window.open(task.videoUrl, "_blank", "noopener,noreferrer");
+      }
+    },
+    [task.videoUrl]
+  );
 
   const handleDelete = useCallback(async () => {
     setDeleteMenu(null);
@@ -713,35 +786,12 @@ function TaskCard({
         <button
           data-no-task-drag
           onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (compact) {
-              onOpenDetail();
-            } else {
-              onToggleExpand?.();
-            }
-          }}
+          onClick={handleFullscreen}
           className="task-icon-button task-detail-button task-card-detail-floating"
-          title={
-            compact
-              ? "상세보기"
-              : expanded
-              ? "카드 축소"
-              : "카드 크게 보기"
-          }
-          aria-label={
-            compact
-              ? "상세보기"
-              : expanded
-              ? "카드 축소"
-              : "카드 크게 보기"
-          }
+          title="전체화면 보기"
+          aria-label="전체화면 보기"
         >
-          {!compact && expanded ? (
-            <Minimize2 className="w-3.5 h-3.5" />
-          ) : (
-            <Maximize2 className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
-          )}
+          <Maximize2 className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
         </button>
       )}
       {deleteMenu && canDelete && (
@@ -767,11 +817,14 @@ function TaskCard({
         </div>
       )}
       {isFinished && task.videoUrl ? (
-        <div className="task-card-media bg-black overflow-hidden flex-shrink-0 relative group">
+        <div
+          ref={mediaRef}
+          className="task-card-media bg-black overflow-hidden flex-shrink-0 relative group"
+        >
           <HoverVideo
             src={task.videoUrl}
             compact={compact}
-            fill={!compact}
+            fill
             ratio={task.actualRatio || task.params.ratio}
           />
         </div>
@@ -782,6 +835,11 @@ function TaskCard({
             label={cfg.label}
             neutral={task.status === "pending"}
           />
+          {generationElapsedLabel && (
+            <div className="task-generation-elapsed" aria-label="생성 경과 시간">
+              {generationElapsedLabel}
+            </div>
+          )}
         </div>
       ) : (
         <div className="task-card-media task-card-media-status flex flex-col items-center justify-center gap-2 flex-shrink-0">
@@ -867,6 +925,12 @@ function TaskCard({
             </span>
             {!compact && <span>·</span>}
             {!compact && <span>{taskModel.name}</span>}
+            {generationElapsedLabel && (
+              <>
+                <span>·</span>
+                <span>생성 {generationElapsedLabel}</span>
+              </>
+            )}
           </div>
 
           <div

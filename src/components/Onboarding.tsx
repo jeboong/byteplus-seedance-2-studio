@@ -80,14 +80,9 @@ export default function Onboarding({
 
       {stage === "intro" ? (
         <section className="onboarding-intro flex min-h-[calc(100vh-40px)] flex-col items-center justify-center text-center">
-          <div className="space-y-5">
-            <p className="onboarding-type-main text-[clamp(3.25rem,11vw,11rem)] font-semibold leading-none tracking-normal text-gray-900">
-              망상을 작품으로
-            </p>
-            <p className="onboarding-type-sub text-[clamp(0.68rem,1.35vw,1.05rem)] font-medium uppercase tracking-[0.24em] text-gray-500">
-              STUDIOFREEWILLUSION STUDIO
-            </p>
-          </div>
+          <h1 className="onboarding-type-main text-[clamp(2.7rem,8.4vw,8.5rem)] font-semibold uppercase leading-[0.92] tracking-normal text-gray-900">
+            STUDIOFREEWILLUSION STUDIO
+          </h1>
           <button
             type="button"
             onClick={() => setStage("setup")}

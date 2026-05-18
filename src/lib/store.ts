@@ -12,6 +12,12 @@ const DRAFT_KEY = "sd2_composer_draft";
 const PERSIST_DEBOUNCE_MS = 800;
 const DEMO_VIDEO_URL =
   "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
+const TERMINAL_TASK_STATUSES = new Set([
+  "succeeded",
+  "failed",
+  "cancelled",
+  "expired",
+]);
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let persistDraftTimer: ReturnType<typeof setTimeout> | null = null;
@@ -229,9 +235,21 @@ export const useAppStore = create<AppState>((set) => ({
     }),
   updateTask: (id, update) =>
     set((s) => {
-      const next = s.tasks.map((t) =>
-        t.id === id ? { ...t, ...update } : t
-      );
+      const next = s.tasks.map((t) => {
+        if (t.id !== id) return t;
+        const shouldStampCompletedAt =
+          typeof update.status === "string" &&
+          TERMINAL_TASK_STATUSES.has(update.status) &&
+          !t.completedAt &&
+          update.completedAt === undefined;
+        return {
+          ...t,
+          ...update,
+          completedAt: shouldStampCompletedAt
+            ? Date.now()
+            : update.completedAt ?? t.completedAt,
+        };
+      });
       persistTasks(next);
       return { tasks: next };
     }),
@@ -264,15 +282,16 @@ export const useAppStore = create<AppState>((set) => ({
         ...r,
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       }));
+      const params = { ...DEFAULT_PARAMS, ...task.params };
       persistDraft({
         prompt: task.prompt,
         references: refs,
-        params: { ...task.params },
+        params,
       });
       return {
         prompt: task.prompt,
         references: refs,
-        params: { ...task.params },
+        params,
       };
     }),
 }));

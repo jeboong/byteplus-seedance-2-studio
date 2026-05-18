@@ -10,13 +10,12 @@ import {
 } from "react";
 import {
   Play,
-  ChevronDown,
-  ImagePlus,
   Image as ImageIcon,
   Film,
   Link2,
   Music,
   Plus,
+  Settings2,
   X,
   Volume2,
   VolumeX,
@@ -24,12 +23,18 @@ import {
 import { useAppStore, hydrateTasks } from "@/lib/store";
 import { createGenerationTask, getTaskStatus } from "@/lib/api";
 import {
+  ASPECT_RATIOS,
+  RATIO_ICONS,
   estimateCost,
   estimateTokens,
   getModelOption,
   isAlibabaModel,
+  minDurationForModel,
   supportsAspectRatio,
+  supportsSmartDuration,
+  type AspectRatio,
   type ModelParams as ModelParamsType,
+  type Resolution,
 } from "@/lib/types";
 import { useFileUpload } from "@/lib/useFileUpload";
 import { PromptInsertProvider } from "@/lib/usePromptInsert";
@@ -89,6 +94,41 @@ const BYTEPLUS_MODE_CYCLE: ModelParamsType["mode"][] = [
   "reference",
   "first_last_frame",
 ];
+const RESOLUTION_OPTIONS = ["480p", "720p", "1080p"] as const;
+
+function RatioPreview({ ratio }: { ratio: AspectRatio }) {
+  const dim = RATIO_ICONS[ratio];
+  const scale = 62 / Math.max(dim.w, dim.h);
+  const w = Math.round(dim.w * scale);
+  const h = Math.round(dim.h * scale);
+  return (
+    <div className="ratio-preview flex h-16 w-24 items-center justify-center rounded-xl border">
+      <div
+        className={`ratio-preview-frame rounded-md border ${
+          ratio === "adaptive" ? "ratio-preview-adaptive" : ""
+        }`}
+        style={{ width: w, height: h }}
+      />
+    </div>
+  );
+}
+
+function rangeProgress(value: number, min: number, max: number) {
+  if (max <= min) return 100;
+  return ((value - min) / (max - min)) * 100;
+}
+
+function ratioDescription(ratio: AspectRatio) {
+  if (ratio === "adaptive") return "Source-aware canvas";
+  if (ratio === "1:1") return "Square";
+  if (ratio === "9:16" || ratio === "3:4") return "Portrait";
+  if (ratio === "21:9") return "Cinematic wide";
+  return "Landscape";
+}
+
+function ratioLabel(value: AspectRatio, fallback?: string) {
+  return value === "adaptive" ? "Auto" : fallback ?? value;
+}
 
 function snapNumber(value: number, step = MAGNET_GRID): number {
   return Math.round(value / step) * step;
@@ -125,6 +165,11 @@ function clipboardFilesFromData(data: DataTransfer | null): File[] {
   return result;
 }
 
+const DEMO_PENDING_MS = 3000;
+const DEMO_GENERATING_MS = 10000;
+const GENERATION_CONFIRM_COUNTDOWN_SECONDS = 15;
+const GENERATION_CONFIRM_SKIP_KEY = "sd2_skip_generation_confirm";
+
 export default function GenerateView() {
   const {
     apiKey,
@@ -144,6 +189,15 @@ export default function GenerateView() {
   } = useAppStore();
   const [error, setError] = useState("");
   const [paramsOpen, setParamsOpen] = useState(false);
+  const [activeQuickPanel, setActiveQuickPanel] = useState<
+    "ratio" | "resolution" | "duration" | null
+  >(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmCountdown, setConfirmCountdown] = useState(
+    GENERATION_CONFIRM_COUNTDOWN_SECONDS
+  );
+  const [skipGenerationConfirm, setSkipGenerationConfirm] = useState(false);
+  const [skipConfirmChecked, setSkipConfirmChecked] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isReferenceSlotOver, setIsReferenceSlotOver] = useState(false);
   const [promptExpanded, setPromptExpanded] = useState(false);
@@ -181,6 +235,7 @@ export default function GenerateView() {
     startX: number;
     startY: number;
     startOffset: { x: number; y: number };
+    active: boolean;
   } | null>(null);
   const composerResizeRef = useRef<{
     pointerId: number;
@@ -199,6 +254,9 @@ export default function GenerateView() {
     active: boolean;
   } | null>(null);
   const suppressFrameClickRef = useRef(false);
+  const suppressComposerClickRef = useRef(false);
+  const confirmExecutingRef = useRef(false);
+  const skipConfirmCheckedRef = useRef(false);
   const dragCounter = useRef(0);
   const [externalReferenceOpen, setExternalReferenceOpen] = useState(false);
   const [externalReferenceValue, setExternalReferenceValue] = useState("");
@@ -207,19 +265,37 @@ export default function GenerateView() {
   const isExpanded = promptExpanded || isDragOver;
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    setSkipGenerationConfirm(
+      localStorage.getItem(GENERATION_CONFIRM_SKIP_KEY) === "1"
+    );
+  }, []);
+
+  useEffect(() => {
     if (window.innerWidth < 900) {
       setParamsOpen(false);
     }
   }, []);
 
   useEffect(() => {
-    if (!paramsOpen) return;
+    if (!paramsOpen && !activeQuickPanel) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setParamsOpen(false);
+      if (event.key !== "Escape") return;
+      setParamsOpen(false);
+      setActiveQuickPanel(null);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [paramsOpen]);
+  }, [activeQuickPanel, paramsOpen]);
+
+  useEffect(() => {
+    if (!confirmOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setConfirmOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [confirmOpen]);
 
   const { upload: uploadFiles, error: dropError, clearError: clearDropError } =
     useFileUpload();
@@ -493,6 +569,7 @@ export default function GenerateView() {
         startX: e.clientX,
         startY: e.clientY,
         startOffset: composerOffset,
+        active: false,
       };
       setIsComposerDragging(true);
       setIsComposerSnapping(false);
@@ -504,6 +581,10 @@ export default function GenerateView() {
     (e: React.PointerEvent<HTMLElement>) => {
       const drag = composerDragRef.current;
       if (!drag || drag.pointerId !== e.pointerId) return;
+      const distance = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
+      if (distance > 4) {
+        drag.active = true;
+      }
       const next = clampComposerOffset({
         x: drag.startOffset.x + e.clientX - drag.startX,
         y: drag.startOffset.y + e.clientY - drag.startY,
@@ -517,6 +598,10 @@ export default function GenerateView() {
     (e?: React.PointerEvent<HTMLElement>) => {
       const drag = composerDragRef.current;
       if (!drag) return;
+      const distance = e
+        ? Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY)
+        : 0;
+      const didMove = drag.active || distance > 4;
       const finalOffset = e
         ? clampComposerOffset({
             x: drag.startOffset.x + e.clientX - drag.startX,
@@ -534,6 +619,12 @@ export default function GenerateView() {
       setIsComposerDragging(false);
       setIsComposerSnapping(true);
       setComposerOffset(snapComposerOffset(finalOffset));
+      if (didMove) {
+        suppressComposerClickRef.current = true;
+        window.setTimeout(() => {
+          suppressComposerClickRef.current = false;
+        }, 120);
+      }
     },
     [clampComposerOffset, composerOffset, snapComposerOffset]
   );
@@ -553,6 +644,11 @@ export default function GenerateView() {
 
   const handleComposerClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
+      if (suppressComposerClickRef.current) {
+        suppressComposerClickRef.current = false;
+        event.preventDefault();
+        return;
+      }
       const target = event.target;
       if (
         target instanceof HTMLElement &&
@@ -834,6 +930,7 @@ export default function GenerateView() {
       setPromptExpanded(false);
       setExternalReferenceOpen(false);
       setParamsOpen(false);
+      setActiveQuickPanel(null);
       setIsComposerDragging(false);
       setIsComposerResizing(false);
       setIsComposerSnapping(true);
@@ -844,7 +941,9 @@ export default function GenerateView() {
   }, []);
 
   useEffect(() => {
-    if (!promptExpanded && !externalReferenceOpen && !paramsOpen) return;
+    if (!promptExpanded && !externalReferenceOpen && !paramsOpen && !activeQuickPanel) {
+      return;
+    }
     const handleOutsidePointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (
@@ -856,12 +955,17 @@ export default function GenerateView() {
       setPromptExpanded(false);
       setExternalReferenceOpen(false);
       setParamsOpen(false);
+      setActiveQuickPanel(null);
     };
     document.addEventListener("pointerdown", handleOutsidePointerDown, true);
     return () => {
       document.removeEventListener("pointerdown", handleOutsidePointerDown, true);
     };
-  }, [externalReferenceOpen, paramsOpen, promptExpanded]);
+  }, [activeQuickPanel, externalReferenceOpen, paramsOpen, promptExpanded]);
+
+  useEffect(() => {
+    if (!isExpanded) setActiveQuickPanel(null);
+  }, [isExpanded]);
 
   useEffect(() => {
     if (!isExpanded) return;
@@ -898,6 +1002,30 @@ export default function GenerateView() {
   const currentModel = getModelOption(params.modelId);
   const isAlibaba = isAlibabaModel(params.modelId);
   const activeApiKey = isAlibaba ? alibabaApiKey : apiKey;
+  const visibleRatios = useMemo(
+    () =>
+      ASPECT_RATIOS.filter((ratio) =>
+        supportsAspectRatio(params.modelId, ratio.value)
+      ),
+    [params.modelId]
+  );
+  const selectedRatio =
+    visibleRatios.find((ratio) => ratio.value === params.ratio) ??
+    visibleRatios[0];
+  const availableResolutions = useMemo(
+    () =>
+      RESOLUTION_OPTIONS.filter((resolution) => {
+        if (resolution === "1080p" && currentModel.supports1080p === false) {
+          return false;
+        }
+        if (resolution === "480p" && currentModel.supports480p === false) {
+          return false;
+        }
+        return true;
+      }),
+    [currentModel.supports1080p, currentModel.supports480p]
+  );
+  const canAdjustRatio = currentModel.happyHorseMode !== "i2v";
   const isTextMode = !isAlibaba && params.mode === "text";
   const activeReferences = useMemo(
     () => (isTextMode ? [] : references),
@@ -921,6 +1049,7 @@ export default function GenerateView() {
   const isReferenceMode = params.mode === "reference";
   const showReferenceSlot =
     isReferenceMode && (!isAlibaba || happyHorseMode !== "t2v");
+  const showExternalReferenceSlot = showReferenceSlot && params.urlAssetAttach;
   const composerModeLabel = isAlibaba
     ? currentModel.happyHorseMode === "t2v"
       ? "Text-to-video"
@@ -939,25 +1068,50 @@ export default function GenerateView() {
     : params.mode === "first_last_frame"
     ? "First/Last"
     : "Reference";
-  const summaryModelLabel = isAlibaba ? "HappyHorse" : currentModel.name;
-  const summaryRatioLabel =
-    currentModel.happyHorseMode === "i2v"
-      ? "SOURCE"
-      : params.ratio === "adaptive"
-      ? "AUTO"
-      : params.ratio;
+  const composerModelLabel = isAlibaba
+    ? "HAPPYHORSE"
+    : currentModel.name.toUpperCase();
   const summaryDurationLabel =
-    params.durationType === "seconds" ? `${params.duration}s` : "SMART";
-  const composerSummary = [
-    summaryModelLabel,
-    summaryRatioLabel,
-    summaryDurationLabel,
-  ].join(" · ");
+    params.durationType === "seconds" ? `${params.duration}초` : "SMART";
+  const composerRatioLabel = canAdjustRatio
+    ? params.ratio === "adaptive"
+      ? "AUTO"
+      : params.ratio
+    : "SOURCE";
+  const canUseSmartDuration = supportsSmartDuration(params.modelId);
+  const durationMin = minDurationForModel(params.modelId);
+  const durationProgress = rangeProgress(params.duration, durationMin, 15);
   const referenceFileAccept = isAlibaba
     ? "image/jpeg,image/jpg,image/png,image/bmp,image/webp"
     : "image/*,video/*,audio/*";
   const referenceFileMultiple = !(isAlibaba && happyHorseMode === "i2v");
   const canToggleComposerMode = !isAlibaba;
+
+  useEffect(() => {
+    if (activeQuickPanel === "ratio" && !canAdjustRatio) {
+      setActiveQuickPanel(null);
+    }
+  }, [activeQuickPanel, canAdjustRatio]);
+
+  const cycleAspectRatio = useCallback(() => {
+    if (!canAdjustRatio || visibleRatios.length <= 1) return;
+    const currentIndex = Math.max(
+      0,
+      visibleRatios.findIndex((ratio) => ratio.value === selectedRatio.value)
+    );
+    const nextIndex = (currentIndex + 1) % visibleRatios.length;
+    setParams({ ratio: visibleRatios[nextIndex].value });
+  }, [canAdjustRatio, selectedRatio.value, setParams, visibleRatios]);
+
+  const cycleResolution = useCallback(() => {
+    if (availableResolutions.length <= 1) return;
+    const currentIndex = Math.max(
+      0,
+      availableResolutions.indexOf(params.resolution as Resolution)
+    );
+    const nextIndex = (currentIndex + 1) % availableResolutions.length;
+    setParams({ resolution: availableResolutions[nextIndex] });
+  }, [availableResolutions, params.resolution, setParams]);
 
   const toggleComposerMode = useCallback(() => {
     if (isAlibaba) return;
@@ -967,14 +1121,49 @@ export default function GenerateView() {
     setParams({
       mode: nextMode,
     });
+    setActiveQuickPanel(null);
     setPromptExpanded(true);
   }, [isAlibaba, params.mode, setParams]);
 
   const toggleAudio = useCallback(() => {
     if (isAlibaba) return;
     setParams({ generateAudio: !params.generateAudio });
+    setActiveQuickPanel(null);
     setPromptExpanded(true);
   }, [isAlibaba, params.generateAudio, setParams]);
+
+  const openQuickPanel = useCallback(
+    (panel: "ratio" | "resolution" | "duration") => {
+      if (!isExpanded) return;
+      setParamsOpen(false);
+      setActiveQuickPanel(panel);
+    },
+    [isExpanded]
+  );
+
+  const handleRatioQuickClick = useCallback(() => {
+    if (activeQuickPanel === "ratio") {
+      cycleAspectRatio();
+      return;
+    }
+    openQuickPanel("ratio");
+  }, [activeQuickPanel, cycleAspectRatio, openQuickPanel]);
+
+  const handleResolutionQuickClick = useCallback(() => {
+    if (activeQuickPanel === "resolution") {
+      cycleResolution();
+      return;
+    }
+    openQuickPanel("resolution");
+  }, [activeQuickPanel, cycleResolution, openQuickPanel]);
+
+  const handleDurationQuickClick = useCallback(() => {
+    if (!isExpanded) return;
+    setParamsOpen(false);
+    setActiveQuickPanel((current) =>
+      current === "duration" ? null : "duration"
+    );
+  }, [isExpanded]);
 
   const handleExternalReferenceSubmit = useCallback(() => {
     const value = externalReferenceValue.trim();
@@ -1035,7 +1224,14 @@ export default function GenerateView() {
       setComposerOffset((offset) => clampComposerOffset(offset));
     });
     return () => cancelAnimationFrame(raf);
-  }, [clampComposerOffset, externalReferenceOpen, isExpanded, paramsOpen, showReferenceSlot]);
+  }, [
+    activeQuickPanel,
+    clampComposerOffset,
+    externalReferenceOpen,
+    isExpanded,
+    paramsOpen,
+    showReferenceSlot,
+  ]);
 
   useEffect(() => {
     if (!showReferenceSlot) {
@@ -1043,6 +1239,13 @@ export default function GenerateView() {
       setExternalReferenceOpen(false);
     }
   }, [showReferenceSlot]);
+
+  useEffect(() => {
+    if (!showExternalReferenceSlot) {
+      setExternalReferenceOpen(false);
+      setExternalReferenceError("");
+    }
+  }, [showExternalReferenceSlot]);
 
   const hasFirstFrame = activeReferences.some((r) => r.role === "first_frame");
   const hasLastFrame = activeReferences.some((r) => r.role === "last_frame");
@@ -1083,6 +1286,7 @@ export default function GenerateView() {
     : "";
   const pollTask = useCallback(
     (localId: string, taskId: string, taskParams: ModelParamsType) => {
+      if (taskId.startsWith("demo-")) return;
       const key = isAlibabaModel(taskParams.modelId)
         ? useAppStore.getState().alibabaApiKey
         : useAppStore.getState().apiKey;
@@ -1158,6 +1362,8 @@ export default function GenerateView() {
       if (
         (t.status === "pending" || t.status === "queued" || t.status === "running") &&
         t.taskId &&
+        !t.demo &&
+        !t.taskId.startsWith("demo-") &&
         !pollingRef.current[t.id]
       ) {
         pollTask(t.id, t.taskId, t.params);
@@ -1172,7 +1378,7 @@ export default function GenerateView() {
     };
   }, []);
 
-  const handleGenerate = useCallback(async () => {
+  const performGenerate = useCallback(async () => {
     if (generateIssue || (!demoMode && !activeApiKey)) {
       setError(generateIssue || "API Key를 입력하세요.");
       return;
@@ -1207,13 +1413,13 @@ export default function GenerateView() {
     if (demoMode) {
       const demoVideoUrl =
         "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
-      localIds.forEach((localId, index) => {
+      localIds.forEach((localId) => {
         window.setTimeout(() => {
           updateTask(localId, {
             taskId: `demo-${localId}`,
             status: "running",
           });
-        }, 500 + index * 180);
+        }, DEMO_PENDING_MS);
         window.setTimeout(() => {
           updateTask(localId, {
             status: "succeeded",
@@ -1238,7 +1444,7 @@ export default function GenerateView() {
                 singleParams.ratio === "adaptive" ? "16:9" : singleParams.ratio,
             },
           });
-        }, 1800 + index * 320);
+        }, DEMO_PENDING_MS + DEMO_GENERATING_MS);
       });
       return;
     }
@@ -1267,6 +1473,61 @@ export default function GenerateView() {
     addTask,
     updateTask,
     pollTask,
+  ]);
+
+  const executeConfirmedGenerate = useCallback(() => {
+    if (confirmExecutingRef.current) return;
+    confirmExecutingRef.current = true;
+    if (skipConfirmCheckedRef.current && typeof window !== "undefined") {
+      localStorage.setItem(GENERATION_CONFIRM_SKIP_KEY, "1");
+      setSkipGenerationConfirm(true);
+    }
+    setConfirmOpen(false);
+    setConfirmCountdown(GENERATION_CONFIRM_COUNTDOWN_SECONDS);
+    void performGenerate().finally(() => {
+      confirmExecutingRef.current = false;
+    });
+  }, [performGenerate]);
+
+  useEffect(() => {
+    if (!confirmOpen) return;
+    setConfirmCountdown(GENERATION_CONFIRM_COUNTDOWN_SECONDS);
+    const timer = window.setInterval(() => {
+      setConfirmCountdown((current) => {
+        if (current <= 1) {
+          window.clearInterval(timer);
+          window.setTimeout(() => executeConfirmedGenerate(), 0);
+          return 0;
+        }
+        return current - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [confirmOpen, executeConfirmedGenerate]);
+
+  const handleGenerate = useCallback(() => {
+    if (generateIssue || (!demoMode && !activeApiKey)) {
+      setError(generateIssue || "API Key를 입력하세요.");
+      return;
+    }
+    if (skipGenerationConfirm) {
+      void performGenerate();
+      return;
+    }
+    setError("");
+    setParamsOpen(false);
+    setActiveQuickPanel(null);
+    setSkipConfirmChecked(false);
+    skipConfirmCheckedRef.current = false;
+    confirmExecutingRef.current = false;
+    setConfirmCountdown(GENERATION_CONFIRM_COUNTDOWN_SECONDS);
+    setConfirmOpen(true);
+  }, [
+    activeApiKey,
+    demoMode,
+    generateIssue,
+    performGenerate,
+    skipGenerationConfirm,
   ]);
 
   return (
@@ -1461,22 +1722,24 @@ export default function GenerateView() {
                   </span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setExternalReferenceError("");
-                    setExternalReferenceOpen((open) => !open);
-                  }}
-                  className="reference-slot-card reference-external-slot group relative flex h-24 w-24 flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border p-3 text-center transition-all"
-                  title="URL 또는 asset:// 첨부"
-                >
-                  <Link2 className="relative z-10 h-5 w-5" />
-                  <span className="relative z-10 text-[11px] font-black uppercase leading-tight tracking-[0.08em]">
-                    URL
-                    <br />
-                    ASSET
-                  </span>
-                </button>
+                {showExternalReferenceSlot && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExternalReferenceError("");
+                      setExternalReferenceOpen((open) => !open);
+                    }}
+                    className="reference-slot-card reference-external-slot group relative flex h-24 w-24 flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border p-3 text-center transition-all"
+                    title="URL 또는 asset:// 첨부"
+                  >
+                    <Link2 className="relative z-10 h-5 w-5" />
+                    <span className="relative z-10 text-[11px] font-black uppercase leading-tight tracking-[0.08em]">
+                      URL
+                      <br />
+                      ASSET
+                    </span>
+                  </button>
+                )}
 
                 <input
                   ref={referenceFileInputRef}
@@ -1487,7 +1750,7 @@ export default function GenerateView() {
                   onChange={handleReferenceFileChange}
                 />
 
-                {externalReferenceOpen && (
+                {showExternalReferenceSlot && externalReferenceOpen && (
                   <div className="reference-external-popover absolute bottom-0 left-[13.4rem] z-50 w-[min(22rem,calc(100vw-3rem))] rounded-2xl border p-3">
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <p className="text-xs font-semibold">URL / asset://</p>
@@ -1630,12 +1893,16 @@ export default function GenerateView() {
                         />
                       )}
                       <div className="keyframe-slot-scrim absolute inset-0" />
-                      <div className="keyframe-slot-plus relative z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/12 text-white shadow-[inset_0_1px_0_rgb(255_255_255_/_0.18)]">
-                        <Plus className="h-6 w-6 shrink-0" />
-                      </div>
-                      <span className="keyframe-slot-label absolute bottom-3 left-0 right-0 z-10 text-[11px] font-black uppercase leading-none tracking-[0.08em] text-white/55">
-                        {meta.label}
-                      </span>
+                      {!frame && (
+                        <>
+                          <div className="keyframe-slot-plus relative z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/12 text-white shadow-[inset_0_1px_0_rgb(255_255_255_/_0.18)]">
+                            <Plus className="h-6 w-6 shrink-0" />
+                          </div>
+                          <span className="keyframe-slot-label absolute bottom-3 left-0 right-0 z-10 text-[11px] font-black uppercase leading-none tracking-[0.08em] text-white/55">
+                            {meta.label}
+                          </span>
+                        </>
+                      )}
                       {frame && (
                         <button
                           type="button"
@@ -1679,11 +1946,7 @@ export default function GenerateView() {
             )}
             <div className="pointer-events-auto">
               <div
-                className={`composer-shell glass-card subtle-glow relative cursor-move rounded-2xl border overflow-hidden transition-[border-color,box-shadow] duration-200 ${
-                  isDragOver
-                    ? "border-primary-400 ring-2 ring-primary-200"
-                    : "border-white/60"
-                }`}
+                className="composer-shell glass-card subtle-glow relative cursor-move rounded-2xl border border-white/60 overflow-hidden transition-[border-color,box-shadow] duration-200"
                 onPointerDown={handleComposerSurfacePointerDown}
                 onPointerMove={handleComposerPointerMove}
                 onPointerUp={finishComposerDrag}
@@ -1694,28 +1957,21 @@ export default function GenerateView() {
                 onDragOver={handleDragOver}
                 onDrop={handleDrop}
               >
-                {isDragOver && (
-                  <div className="glass-popover absolute inset-0 z-10 flex flex-col items-center justify-center bg-primary-50/90 pointer-events-none rounded-2xl border-2 border-dashed border-primary-400">
-                    <ImagePlus className="w-7 h-7 text-primary-500 mb-1" />
-                    <p className="text-sm font-medium text-primary-600">
-                      여기에 파일을 놓아 첨부
-                    </p>
-                    <p className="text-[10px] text-primary-500 mt-0.5">
-                      {isAlibaba
-                        ? "이미지 10MB 이하 · 임시 OSS 업로드"
-                        : "이미지 / 비디오 / 오디오 (다중 파일 지원)"}
-                    </p>
-                  </div>
-                )}
-
                 {/* Prompt Input */}
-                <div className="px-4 py-2" data-prompt-editor-region>
+                <div
+                  className="px-4 py-2"
+                  data-prompt-editor-region
+                  onPointerDown={() => setActiveQuickPanel(null)}
+                >
                   <PromptEditor
                     ref={promptEditorRef}
                     value={prompt}
                     onChange={handlePromptChange}
                     onPaste={handlePaste}
-                    onFocus={() => setPromptExpanded(true)}
+                    onFocus={() => {
+                      setPromptExpanded(true);
+                      setActiveQuickPanel(null);
+                    }}
                     onBlur={() => {}}
                     rows={1}
                     className={
@@ -1786,60 +2042,135 @@ export default function GenerateView() {
                 <div
                   className="px-4 pb-3 flex items-center justify-between gap-3"
                 >
-                  <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-gray-500 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={toggleComposerMode}
-                      disabled={!canToggleComposerMode}
-                      data-no-composer-drag
-                      className={`composer-action-chip composer-mode-chip ${
-                        canToggleComposerMode
-                          ? "composer-action-chip-active"
-                          : ""
-                      }`}
-                      title={
-                        canToggleComposerMode
-                          ? "Reference / First-Last Frame 전환"
-                          : composerModeLabel
-                      }
-                    >
-                      {composerModeButtonLabel}
-                    </button>
-                    {!isAlibaba && (
-                      <button
-                        type="button"
-                        onClick={toggleAudio}
-                        data-no-composer-drag
-                        className={`composer-action-chip composer-sound-chip ${
-                          params.generateAudio ? "composer-action-chip-active" : ""
-                        }`}
-                        title={params.generateAudio ? "Sound 끄기" : "Sound 켜기"}
-                        aria-pressed={params.generateAudio}
-                      >
-                        {params.generateAudio ? (
-                          <Volume2 className="h-3.5 w-3.5" />
-                        ) : (
-                          <VolumeX className="h-3.5 w-3.5" />
+                  <div className="composer-control-strip scrollbar-thin flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto overflow-y-hidden text-[11px] text-gray-500">
+                    {isExpanded ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={toggleComposerMode}
+                          disabled={!canToggleComposerMode}
+                          data-no-composer-drag
+                          className={`composer-action-chip composer-mode-chip ${
+                            canToggleComposerMode
+                              ? "composer-action-chip-active"
+                              : ""
+                          }`}
+                          title={
+                            canToggleComposerMode
+                              ? "Reference / First-Last Frame 전환"
+                              : composerModeLabel
+                          }
+                        >
+                          {composerModeButtonLabel}
+                        </button>
+                        {!isAlibaba && (
+                          <button
+                            type="button"
+                            onClick={toggleAudio}
+                            data-no-composer-drag
+                            className={`composer-action-chip composer-sound-chip ${
+                              params.generateAudio ? "composer-action-chip-active" : ""
+                            }`}
+                            title={params.generateAudio ? "Sound 끄기" : "Sound 켜기"}
+                            aria-pressed={params.generateAudio}
+                          >
+                            {params.generateAudio ? (
+                              <Volume2 className="h-3.5 w-3.5" />
+                            ) : (
+                              <VolumeX className="h-3.5 w-3.5" />
+                            )}
+                            <span>Sound</span>
+                          </button>
                         )}
-                        <span>Sound</span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={handleRatioQuickClick}
+                          disabled={!canAdjustRatio}
+                          data-no-composer-drag
+                          aria-pressed={activeQuickPanel === "ratio"}
+                          className={`composer-action-chip composer-ratio-chip ${
+                            activeQuickPanel === "ratio"
+                              ? "composer-action-chip-active"
+                              : ""
+                          }`}
+                          title={
+                            canAdjustRatio
+                              ? "Aspect Ratio"
+                              : "소스 이미지 비율을 사용합니다."
+                          }
+                        >
+                          {composerRatioLabel}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleResolutionQuickClick}
+                          data-no-composer-drag
+                          aria-pressed={activeQuickPanel === "resolution"}
+                          className={`composer-action-chip composer-resolution-chip ${
+                            activeQuickPanel === "resolution"
+                              ? "composer-action-chip-active"
+                              : ""
+                          }`}
+                          title="Resolution"
+                        >
+                          {params.resolution}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleDurationQuickClick}
+                          data-no-composer-drag
+                          aria-pressed={activeQuickPanel === "duration"}
+                          className={`composer-action-chip composer-duration-chip ${
+                            activeQuickPanel === "duration"
+                              ? "composer-action-chip-active"
+                              : ""
+                          }`}
+                          title="Video Duration"
+                        >
+                          {summaryDurationLabel}
+                        </button>
+                      </>
+                    ) : (
+                      <div
+                        className="composer-status-strip flex min-w-0 items-center gap-1.5 overflow-hidden"
+                        data-no-composer-drag
+                      >
+                        <span className="truncate">{composerModeButtonLabel}</span>
+                        {!isAlibaba && (
+                          <>
+                            <span className="composer-status-separator" />
+                            <span className="truncate">
+                              {params.generateAudio ? "Sound" : "Muted"}
+                            </span>
+                          </>
+                        )}
+                        <span className="composer-status-separator" />
+                        <span className="truncate">{composerRatioLabel}</span>
+                        <span className="composer-status-separator" />
+                        <span className="truncate">{params.resolution}</span>
+                        <span className="composer-status-separator" />
+                        <span className="truncate">{summaryDurationLabel}</span>
+                      </div>
                     )}
                   </div>
 
-                  <div className="flex min-w-0 items-center gap-2 shrink-0 ml-2">
-                    <span className="hidden text-[10px] text-gray-400 sm:inline">
+                  <div className="ml-2 flex shrink-0 items-center justify-end gap-2">
+                    <span className="hidden min-w-0 shrink truncate text-[10px] text-gray-400 xl:inline">
                       {isAlibaba
                         ? "DashScope usage"
                         : `~${(estimateTokens(params, hasVideoRef) / 1000).toFixed(0)}K tokens · $${cost.toFixed(3)}`}
                     </span>
                     <button
                       type="button"
-                      onClick={() => setParamsOpen((open) => !open)}
-                      className="composer-settings-summary glass-chip flex max-w-[min(54vw,24rem)] items-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500 transition-colors hover:text-gray-800"
+                      onClick={() => {
+                        setActiveQuickPanel(null);
+                        setParamsOpen((open) => !open);
+                      }}
+                      className="composer-settings-summary glass-chip flex min-w-0 max-w-[min(30vw,13rem)] items-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-semibold tracking-[0.08em] text-gray-500 transition-colors hover:text-gray-800"
                       title="Generation settings"
                     >
-                      <span className="truncate">{composerSummary}</span>
-                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                      <span className="truncate">{composerModelLabel}</span>
+                      <Settings2 className="h-3.5 w-3.5 shrink-0 text-gray-400" />
                     </button>
                     <button
                       type="button"
@@ -1854,6 +2185,191 @@ export default function GenerateView() {
                 </div>
 
               </div>
+              {activeQuickPanel && isExpanded && (
+                <div
+                  className="composer-settings-popover composer-quick-popover pointer-events-auto absolute left-0 z-50"
+                  style={{ bottom: "3.55rem" }}
+                  data-no-composer-drag
+                  onPointerDown={(event) => event.stopPropagation()}
+                >
+                  <div className="model-settings-composer composer-quick-panel glass-panel rounded-[1.35rem] border p-4">
+                    {activeQuickPanel === "ratio" ? (
+                      <section>
+                        <label className="block text-xs font-medium text-gray-500 mb-2">
+                          Aspect Ratio
+                        </label>
+                        <div className="ratio-picker glass-control rounded-2xl border p-3">
+                          <div className="mb-3 flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={cycleAspectRatio}
+                              className="ratio-preview-button"
+                              title="클릭해서 다음 비율"
+                              aria-label="다음 비율로 변경"
+                            >
+                              <RatioPreview ratio={selectedRatio.value} />
+                            </button>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-gray-800">
+                                {ratioLabel(
+                                  selectedRatio.value,
+                                  selectedRatio.label
+                                )}
+                              </p>
+                              <p className="mt-0.5 text-[11px] text-gray-400">
+                                {ratioDescription(selectedRatio.value)}
+                              </p>
+                            </div>
+                          </div>
+                          <div
+                            className="ratio-chip-row"
+                            role="listbox"
+                            aria-label="Aspect Ratio"
+                          >
+                            {visibleRatios.map((ratio) => {
+                              const active = params.ratio === ratio.value;
+                              return (
+                                <button
+                                  key={ratio.value}
+                                  type="button"
+                                  role="option"
+                                  aria-selected={active}
+                                  onClick={() =>
+                                    setParams({ ratio: ratio.value })
+                                  }
+                                  className={`ratio-chip ${
+                                    active ? "ratio-chip-active" : ""
+                                  }`}
+                                >
+                                  {ratioLabel(ratio.value, ratio.label)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </section>
+                    ) : activeQuickPanel === "resolution" ? (
+                      <section>
+                        <label className="block text-xs font-medium text-gray-500 mb-2">
+                          Resolution
+                        </label>
+                        <div className="param-segmented grid grid-cols-3 gap-1 bg-surface-100 rounded-xl p-1">
+                          {RESOLUTION_OPTIONS.map((res) => {
+                            const disabled =
+                              (res === "1080p" &&
+                                currentModel.supports1080p === false) ||
+                              (res === "480p" &&
+                                currentModel.supports480p === false);
+                            return (
+                              <button
+                                key={res}
+                                type="button"
+                                onClick={() => {
+                                  if (!disabled) setParams({ resolution: res });
+                                }}
+                                disabled={disabled}
+                                title={
+                                  disabled
+                                    ? "현재 모델에서 지원하지 않는 해상도입니다."
+                                    : res
+                                }
+                                className={`param-option relative rounded-lg py-2 text-xs font-medium transition-all ${
+                                  params.resolution === res
+                                    ? "param-choice-selected text-gray-800"
+                                    : "text-gray-500 hover:text-gray-700"
+                                } ${
+                                  disabled
+                                    ? "cursor-not-allowed opacity-40 hover:text-gray-500"
+                                    : ""
+                                }`}
+                              >
+                                {res}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    ) : (
+                      <section>
+                        <label className="block text-xs font-medium text-gray-500 mb-2">
+                          Video Duration
+                        </label>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="range"
+                            min={durationMin}
+                            max={15}
+                            step={1}
+                            value={params.duration}
+                            disabled={params.durationType === "smart"}
+                            onChange={(event) =>
+                              setParams({
+                                duration: Number(event.target.value),
+                                durationType: "seconds",
+                              })
+                            }
+                            style={
+                              {
+                                "--range-progress":
+                                  params.durationType === "smart"
+                                    ? "0%"
+                                    : `${durationProgress}%`,
+                              } as CSSProperties
+                            }
+                            className={`range-control flex-1 h-1.5 ${
+                              params.durationType === "smart"
+                                ? "range-control-auto"
+                                : ""
+                            }`}
+                          />
+                          <div className="duration-control-group flex items-center gap-2">
+                            <div
+                              className={`duration-value-chip flex min-w-[60px] items-center justify-center gap-1 rounded-lg bg-surface-100 px-3 py-1.5 ${
+                                params.durationType === "smart"
+                                  ? "duration-value-chip-auto"
+                                  : ""
+                              }`}
+                            >
+                              <span className="text-sm font-medium text-gray-700">
+                                {params.duration}
+                              </span>
+                              <span className="text-xs text-gray-400">s</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setParams({
+                                  durationType:
+                                    params.durationType === "smart"
+                                      ? "seconds"
+                                      : "smart",
+                                })
+                              }
+                              disabled={!canUseSmartDuration}
+                              className={`duration-auto-button rounded-lg px-3 py-1.5 text-xs font-bold tracking-[0.08em] transition-all ${
+                                params.durationType === "smart"
+                                  ? "duration-auto-button-active"
+                                  : ""
+                              } ${
+                                !canUseSmartDuration
+                                  ? "cursor-not-allowed opacity-40"
+                                  : ""
+                              }`}
+                              title={
+                                canUseSmartDuration
+                                  ? "Smart length"
+                                  : "현재 모델에서는 Smart length를 지원하지 않습니다."
+                              }
+                            >
+                              AUTO
+                            </button>
+                          </div>
+                        </div>
+                      </section>
+                    )}
+                  </div>
+                </div>
+              )}
               {paramsOpen && (
                 <div
                   className="composer-settings-popover pointer-events-auto absolute right-0 z-50"
@@ -1887,6 +2403,62 @@ export default function GenerateView() {
             </div>
           </div>
           </PromptInsertProvider>
+          {confirmOpen && (
+            <div
+              className="generation-confirm-overlay"
+              role="dialog"
+              aria-modal="true"
+              aria-label="생성 확인"
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) {
+                  setConfirmOpen(false);
+                }
+              }}
+            >
+              <div
+                className="generation-confirm-card"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <p className="generation-confirm-kicker">Confirm generation</p>
+                <h2>이대로 생성 하시겠습니까?</h2>
+                <div className="generation-confirm-summary">
+                  <strong>{composerModelLabel}</strong>
+                  <span>
+                    {summaryDurationLabel} · {params.resolution} ·{" "}
+                    {composerRatioLabel}
+                  </span>
+                </div>
+                <label className="generation-confirm-check">
+                  <input
+                    type="checkbox"
+                    checked={skipConfirmChecked}
+                    onChange={(event) => {
+                      skipConfirmCheckedRef.current = event.target.checked;
+                      setSkipConfirmChecked(event.target.checked);
+                    }}
+                  />
+                  <span>다음부터는 경고 스킵하기</span>
+                </label>
+                <div className="generation-confirm-actions">
+                  <button
+                    type="button"
+                    className="generation-confirm-button generation-confirm-cancel"
+                    onClick={() => setConfirmOpen(false)}
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    className="generation-confirm-button generation-confirm-primary"
+                    onClick={executeConfirmedGenerate}
+                  >
+                    바로 생성{" "}
+                    <span>({confirmCountdown}초)</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
