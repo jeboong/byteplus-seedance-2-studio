@@ -1393,9 +1393,29 @@ export default function GenerateView() {
                           Uploading
                         </span>
                       )}
-                      <span className="reference-attached-tag absolute bottom-2 left-2 right-2 z-20 truncate text-[10px] font-black uppercase leading-none tracking-[0.08em]">
-                        {tag ?? ref.name}
-                      </span>
+                      {tag ? (
+                        <button
+                          type="button"
+                          draggable={false}
+                          data-no-composer-drag
+                          onMouseDown={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            insertAtCursor(` ${tag} `);
+                            setPromptExpanded(true);
+                          }}
+                          className="reference-attached-tag absolute bottom-2 left-2 right-2 z-20 truncate text-[10px] font-black uppercase leading-none tracking-[0.08em]"
+                          title={`${tag} 프롬프트에 삽입`}
+                          aria-label={`${tag} 프롬프트에 삽입`}
+                        >
+                          {tag}
+                        </button>
+                      ) : (
+                        <span className="reference-attached-tag absolute bottom-2 left-2 right-2 z-20 truncate text-[10px] font-black uppercase leading-none tracking-[0.08em]">
+                          {ref.name}
+                        </span>
+                      )}
                       <button
                         type="button"
                         onClick={(event) => {

@@ -5404,8 +5404,20 @@ html:not(.dark) .keyframe-slot-label {
 }
 
 .reference-attached-tag {
+  display: block;
+  border: 0;
+  padding: 0;
+  background: transparent;
   color: rgb(255 255 255 / 0.86);
+  cursor: pointer;
   text-shadow: 0 1px 10px rgb(0 0 0 / 0.38);
+}
+
+.reference-attached-tag:hover,
+.reference-attached-tag:focus-visible {
+  color: #ffffff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .reference-attached-remove {
@@ -5440,4 +5452,74 @@ html:not(.dark) .reference-attached-icon {
   z-index: 2147483000 !important;
   border-radius: 0.9rem !important;
   pointer-events: auto;
+}
+
+.prompt-tag-highlight-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.prompt-tag-highlight-text {
+  min-height: 100%;
+  padding: 0.5rem 0.75rem;
+  color: transparent;
+  font: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.prompt-editor-textarea {
+  position: relative;
+  z-index: 1;
+}
+
+.prompt-tag-highlight {
+  border-radius: 0.44rem;
+  background: rgb(96 165 250 / 0.18);
+  box-shadow:
+    0 0 0 3px rgb(96 165 250 / 0.14),
+    inset 0 0 0 1px rgb(96 165 250 / 0.20);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.prompt-tag-highlight-video {
+  background: rgb(34 211 238 / 0.16);
+  box-shadow:
+    0 0 0 3px rgb(34 211 238 / 0.12),
+    inset 0 0 0 1px rgb(34 211 238 / 0.18);
+}
+
+.prompt-tag-highlight-audio {
+  background: rgb(168 85 247 / 0.16);
+  box-shadow:
+    0 0 0 3px rgb(168 85 247 / 0.12),
+    inset 0 0 0 1px rgb(168 85 247 / 0.18);
+}
+
+html:not(.dark) .prompt-tag-highlight {
+  background: rgb(37 99 235 / 0.13);
+  box-shadow:
+    0 0 0 3px rgb(37 99 235 / 0.10),
+    inset 0 0 0 1px rgb(37 99 235 / 0.16);
+}
+
+html:not(.dark) .prompt-tag-highlight-video {
+  background: rgb(8 145 178 / 0.12);
+  box-shadow:
+    0 0 0 3px rgb(8 145 178 / 0.09),
+    inset 0 0 0 1px rgb(8 145 178 / 0.14);
+}
+
+html:not(.dark) .prompt-tag-highlight-audio {
+  background: rgb(126 34 206 / 0.12);
+  box-shadow:
+    0 0 0 3px rgb(126 34 206 / 0.09),
+    inset 0 0 0 1px rgb(126 34 206 / 0.14);
 }

@@ -30,6 +30,10 @@ type TagItem = {
   tag: string;
 };
 
+type HighlightPart =
+  | { kind: "text"; text: string; key: string }
+  | { kind: "tag"; text: string; key: string; type: TagItem["type"] };
+
 function getMentionState(textarea: HTMLTextAreaElement): {
   query: string;
   start: number;
@@ -41,10 +45,54 @@ function getMentionState(textarea: HTMLTextAreaElement): {
   if (!match) return null;
 
   const start = cursor - match[0].length;
-  const charBefore = start > 0 ? textarea.value[start - 1] : " ";
-  if (start !== 0 && !/\s/.test(charBefore)) return null;
-
   return { query: match[1], start, cursor };
+}
+
+function tagAliases(item: TagItem): string[] {
+  const n = item.tag.replace(/^\D+/, "");
+  if (item.type === "image") return [item.tag, `@image${n}`];
+  if (item.type === "video") return [item.tag, `@video${n}`];
+  return [item.tag, `@audio${n}`];
+}
+
+function makeHighlightParts(value: string, items: TagItem[]): HighlightPart[] {
+  if (!value) return [];
+  const aliases = new Map<string, TagItem>();
+  items.forEach((item) => {
+    tagAliases(item).forEach((alias) => aliases.set(alias.toLowerCase(), item));
+  });
+
+  const parts: HighlightPart[] = [];
+  const regex = /@(img|image|vid|video|aud|audio)\d+/gi;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(value))) {
+    const text = match[0];
+    const item = aliases.get(text.toLowerCase());
+    if (!item) continue;
+    if (match.index > lastIndex) {
+      parts.push({
+        kind: "text",
+        text: value.slice(lastIndex, match.index),
+        key: `t-${lastIndex}`,
+      });
+    }
+    parts.push({
+      kind: "tag",
+      text,
+      type: item.type,
+      key: `g-${match.index}`,
+    });
+    lastIndex = match.index + text.length;
+  }
+  if (lastIndex < value.length) {
+    parts.push({
+      kind: "text",
+      text: value.slice(lastIndex),
+      key: `t-${lastIndex}`,
+    });
+  }
+  return parts;
 }
 
 function itemMatchesQuery(item: TagItem, query: string): boolean {
@@ -182,6 +230,7 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
     top: 0,
     flipDown: false,
   });
+  const [scrollOffset, setScrollOffset] = useState({ left: 0, top: 0 });
 
   useEffect(() => {
     setPortalEl(document.body);
@@ -191,6 +240,10 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
     if (tagItems.length === 0) return [];
     return tagItems.filter((item) => itemMatchesQuery(item, acQuery));
   }, [tagItems, acQuery]);
+  const highlightParts = useMemo(
+    () => makeHighlightParts(value, tagItems),
+    [tagItems, value]
+  );
 
   useEffect(() => {
     if (!acOpen) return;
@@ -240,6 +293,50 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
       window.setTimeout(placeAutocomplete, 0);
     });
   }, [placeAutocomplete]);
+
+  const syncAutocomplete = useCallback(
+    (textarea: HTMLTextAreaElement) => {
+      if (tagItems.length === 0) {
+        setAcOpen(false);
+        return;
+      }
+      const mention = getMentionState(textarea);
+      if (!mention) {
+        setAcOpen(false);
+        return;
+      }
+      const hasMatch = tagItems.some((item) =>
+        itemMatchesQuery(item, mention.query)
+      );
+      if (!hasMatch) {
+        setAcOpen(false);
+        return;
+      }
+      const coords = getCaretCoordinates(textarea, mention.start);
+      const rect = textarea.getBoundingClientRect();
+      const caretX = rect.left + coords.left - textarea.scrollLeft;
+      const caretTop = rect.top + coords.top - textarea.scrollTop;
+      const caretBottom = caretTop + coords.height;
+      const spaceAbove = caretTop;
+      const spaceBelow = window.innerHeight - caretBottom;
+      const flipDown =
+        spaceAbove < DROPDOWN_MAX_HEIGHT && spaceBelow > spaceAbove;
+      const left = Math.max(
+        8,
+        Math.min(window.innerWidth - DROPDOWN_WIDTH - 8, caretX)
+      );
+
+      setAcPos({
+        left,
+        top: flipDown ? caretBottom + 4 : caretTop - 4,
+        flipDown,
+      });
+      setAcOpen(true);
+      setAcQuery(mention.query);
+      setAcStart(mention.start);
+    },
+    [tagItems]
+  );
 
   useEffect(() => {
     if (!acOpen) return;
@@ -300,15 +397,16 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
   const handleChange = useCallback(
     (e: ChangeEvent<HTMLTextAreaElement>) => {
       onChange(e.target.value);
-      queueAutocompletePlacement();
+      syncAutocomplete(e.currentTarget);
+      requestAnimationFrame(() => syncAutocomplete(e.currentTarget));
     },
-    [onChange, queueAutocompletePlacement]
+    [onChange, syncAutocomplete]
   );
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "@" && !acOpen) {
-        queueAutocompletePlacement();
+        requestAnimationFrame(() => syncAutocomplete(e.currentTarget));
         return;
       }
       if (!acOpen && (e.key === "Tab" || e.key === "Enter")) {
@@ -343,6 +441,7 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
       acOpen,
       filtered,
       queueAutocompletePlacement,
+      syncAutocomplete,
       tagItems,
     ]
   );
@@ -356,6 +455,27 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
       className={`prompt-editor-shell relative border rounded-xl text-sm leading-relaxed text-gray-700 focus-within:ring-2 focus-within:ring-primary-400 focus-within:border-transparent transition-all ${className}`}
       style={style}
     >
+      <div className="prompt-tag-highlight-layer" aria-hidden>
+        <div
+          className="prompt-tag-highlight-text"
+          style={{
+            transform: `translate(${-scrollOffset.left}px, ${-scrollOffset.top}px)`,
+          }}
+        >
+          {highlightParts.map((part) =>
+            part.kind === "tag" ? (
+              <span
+                key={part.key}
+                className={`prompt-tag-highlight prompt-tag-highlight-${part.type}`}
+              >
+                {part.text}
+              </span>
+            ) : (
+              <span key={part.key}>{part.text}</span>
+            )
+          )}
+        </div>
+      </div>
       <textarea
         ref={textareaRef}
         value={value}
@@ -364,6 +484,12 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
         onKeyDown={handleKeyDown}
         onKeyUp={refreshAutocomplete}
         onClick={refreshAutocomplete}
+        onScroll={(event) =>
+          setScrollOffset({
+            left: event.currentTarget.scrollLeft,
+            top: event.currentTarget.scrollTop,
+          })
+        }
         onFocus={() => {
           onFocus?.();
           queueAutocompletePlacement();
