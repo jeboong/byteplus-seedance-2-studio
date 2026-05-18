@@ -414,29 +414,47 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
       const textarea = e.currentTarget;
       if (e.key === "@" && !acOpen) {
         requestAnimationFrame(() => syncAutocomplete(textarea));
+        window.setTimeout(() => syncAutocomplete(textarea), 0);
         return;
       }
-      if (!acOpen && (e.key === "Tab" || e.key === "Enter")) {
-        const mention = getMentionState(textarea);
-        if (!mention) return;
-        const firstMatch = tagItems.find((item) =>
+      const mention = getMentionState(textarea);
+      const mentionMatches = mention
+        ? tagItems.filter((item) =>
           itemMatchesQuery(item, mention.query)
-        );
-        if (!firstMatch) return;
-        e.preventDefault();
-        acceptAutocomplete(firstMatch, mention.start, mention.cursor);
-        return;
+        )
+        : [];
+
+      if (!acOpen && mention && mentionMatches.length > 0) {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          setAcIndex(e.key === "ArrowUp" ? mentionMatches.length - 1 : 0);
+          syncAutocomplete(textarea);
+          return;
+        }
+        if (e.key === "Tab" || e.key === "Enter") {
+          e.preventDefault();
+          acceptAutocomplete(mentionMatches[0], mention.start, mention.cursor);
+          return;
+        }
       }
-      if (!acOpen || filtered.length === 0) return;
+
+      const activeMatches = mentionMatches.length > 0 ? mentionMatches : filtered;
+      if (!acOpen || activeMatches.length === 0) return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setAcIndex((i) => (i + 1) % filtered.length);
+        setAcIndex((i) => (i + 1) % activeMatches.length);
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        setAcIndex((i) => (i - 1 + filtered.length) % filtered.length);
+        setAcIndex((i) => (i - 1 + activeMatches.length) % activeMatches.length);
       } else if (e.key === "Tab" || e.key === "Enter") {
         e.preventDefault();
-        acceptAutocomplete(filtered[acIndex]);
+        const safeIndex = Math.min(acIndex, activeMatches.length - 1);
+        const selected = activeMatches[safeIndex] ?? activeMatches[0];
+        if (mention) {
+          acceptAutocomplete(selected, mention.start, mention.cursor);
+        } else {
+          acceptAutocomplete(selected);
+        }
       } else if (e.key === "Escape") {
         e.preventDefault();
         setAcOpen(false);
@@ -517,12 +535,14 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
         createPortal(
           <div
             className="mention-popover fixed z-[1000] rounded-lg border py-1 max-h-56 overflow-y-auto"
+            data-mention-popover
             style={{
               left: acPos.left,
               top: acPos.top,
               width: DROPDOWN_WIDTH,
               transform: acPos.flipDown ? undefined : "translateY(-100%)",
             }}
+            onPointerDown={(e) => e.preventDefault()}
             onMouseDown={(e) => e.preventDefault()}
           >
             {filtered.map((item, i) => (

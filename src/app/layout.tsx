@@ -12,12 +12,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   // Inline script runs BEFORE React hydrates and BEFORE first paint, so the
-  // user's saved theme (or system preference fallback) is applied with no
+  // user's saved theme (or dark default) is applied with no
   // flash of incorrect colors.
   const themeBoot = `
 (function(){try{
   var s = localStorage.getItem('sd2_theme');
-  var d = s ? s === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  var d = s ? s === 'dark' : true;
   var r = document.documentElement;
   if (d) r.classList.add('dark'); else r.classList.remove('dark');
   r.style.colorScheme = d ? 'dark' : 'light';

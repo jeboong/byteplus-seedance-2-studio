@@ -364,7 +364,7 @@ export default function TaskDetailModal({
             <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
               <dt className="text-gray-400">Model</dt>
               <dd className="text-gray-700 truncate" title={task.params.modelId}>
-                {taskModel.name}
+                {task.sourceModel || taskModel.name}
               </dd>
 
               <dt className="text-gray-400">Mode</dt>
@@ -390,14 +390,25 @@ export default function TaskDetailModal({
               <dd className="text-gray-700">
                 {task.actualDuration
                   ? `${task.actualDuration}s`
+                  : typeof task.actualFrames === "number"
+                  ? `${task.actualFrames} frames`
                   : task.params.durationType === "seconds"
                   ? `${task.params.duration}s`
                   : "Smart"}
               </dd>
 
+              {typeof task.framesPerSecond === "number" && (
+                <>
+                  <dt className="text-gray-400">FPS</dt>
+                  <dd className="text-gray-700">
+                    {task.framesPerSecond}
+                  </dd>
+                </>
+              )}
+
               <dt className="text-gray-400">Audio</dt>
               <dd className="text-gray-700">
-                {task.params.generateAudio ? "On" : "Off"}
+                {(task.generatedAudio ?? task.params.generateAudio) ? "On" : "Off"}
               </dd>
 
               <dt className="text-gray-400">Watermark</dt>
@@ -441,6 +452,30 @@ export default function TaskDetailModal({
                       </dd>
                     </>
                   )}
+                </>
+              )}
+              {task.serviceTier && (
+                <>
+                  <dt className="text-gray-400">Service Tier</dt>
+                  <dd className="text-gray-700">
+                    {task.serviceTier}
+                  </dd>
+                </>
+              )}
+              {typeof task.executionExpiresAfter === "number" && (
+                <>
+                  <dt className="text-gray-400">Expires After</dt>
+                  <dd className="text-gray-700">
+                    {task.executionExpiresAfter}s
+                  </dd>
+                </>
+              )}
+              {task.updatedAt && (
+                <>
+                  <dt className="text-gray-400">Updated</dt>
+                  <dd className="text-gray-700">
+                    {new Date(task.updatedAt).toLocaleString()}
+                  </dd>
                 </>
               )}
             </dl>

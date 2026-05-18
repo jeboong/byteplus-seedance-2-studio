@@ -54,6 +54,56 @@ import Header from "./Header";
 import ModelParams from "./ModelParams";
 import PromptEditor, { type PromptEditorHandle } from "./PromptEditor";
 import VideoResult from "./VideoResult";
+import InteractiveTutorial from "./InteractiveTutorial";
+
+function serverTimestampMs(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value * 1000
+    : undefined;
+}
+
+function readTaskResponseMeta(result: Record<string, unknown>) {
+  const error = result.error;
+  const errorRecord =
+    error && typeof error === "object" ? (error as Record<string, unknown>) : null;
+
+  return {
+    sourceModel: typeof result.model === "string" ? result.model : undefined,
+    createdAt: serverTimestampMs(result.created_at),
+    updatedAt: serverTimestampMs(result.updated_at),
+    actualDuration:
+      typeof result.duration === "number" ? result.duration : undefined,
+    actualFrames: typeof result.frames === "number" ? result.frames : undefined,
+    framesPerSecond:
+      typeof result.framespersecond === "number"
+        ? result.framespersecond
+        : undefined,
+    generatedAudio:
+      typeof result.generate_audio === "boolean"
+        ? result.generate_audio
+        : undefined,
+    actualRatio: typeof result.ratio === "string" ? result.ratio : undefined,
+    actualResolution:
+      typeof result.resolution === "string" ? result.resolution : undefined,
+    safetyIdentifier:
+      typeof result.safety_identifier === "string"
+        ? result.safety_identifier
+        : undefined,
+    draft: typeof result.draft === "boolean" ? result.draft : undefined,
+    draftTaskId:
+      typeof result.draft_task_id === "string"
+        ? result.draft_task_id
+        : undefined,
+    serviceTier:
+      typeof result.service_tier === "string" ? result.service_tier : undefined,
+    executionExpiresAfter:
+      typeof result.execution_expires_after === "number"
+        ? result.execution_expires_after
+        : undefined,
+    errorCode:
+      typeof errorRecord?.code === "string" ? errorRecord.code : undefined,
+  };
+}
 
 function readContentUrl(
   content: unknown,
@@ -272,6 +322,7 @@ export default function GenerateView() {
   const [externalReferenceOpen, setExternalReferenceOpen] = useState(false);
   const [externalReferenceValue, setExternalReferenceValue] = useState("");
   const [externalReferenceError, setExternalReferenceError] = useState("");
+  const [tutorialOpen, setTutorialOpen] = useState(false);
 
   const isExpanded = promptExpanded || isDragOver;
 
@@ -302,6 +353,18 @@ export default function GenerateView() {
   }, []);
 
   useEffect(() => {
+    const startTutorial = () => {
+      setPromptExpanded(true);
+      setParamsOpen(false);
+      setActiveQuickPanel(null);
+      setExternalReferenceOpen(false);
+      window.setTimeout(() => setTutorialOpen(true), 320);
+    };
+    window.addEventListener("sd2:start-tutorial", startTutorial);
+    return () => window.removeEventListener("sd2:start-tutorial", startTutorial);
+  }, []);
+
+  useEffect(() => {
     if (!paramsOpen && !activeQuickPanel) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -317,6 +380,12 @@ export default function GenerateView() {
     const handleParamsPointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
+      if (
+        target instanceof Element &&
+        target.closest("[data-tutorial-overlay]")
+      ) {
+        return;
+      }
       if (
         paramsPopoverRef.current?.contains(target) ||
         settingsButtonRef.current?.contains(target)
@@ -994,6 +1063,12 @@ export default function GenerateView() {
     const handleOutsidePointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (
+        target instanceof Element &&
+        target.closest("[data-mention-popover], [data-tutorial-overlay]")
+      ) {
+        return;
+      }
+      if (
         target instanceof Node &&
         composerRef.current?.contains(target)
       ) {
@@ -1125,6 +1200,14 @@ export default function GenerateView() {
       ? "AUTO"
       : params.ratio
     : "SOURCE";
+  const confirmSoundLabel =
+    !isAlibaba && params.generateAudio ? "사운드 포함" : "사운드 없음";
+  const confirmSettingItems = [
+    summaryDurationLabel,
+    params.resolution,
+    composerRatioLabel,
+    confirmSoundLabel,
+  ];
   const canUseSmartDuration = supportsSmartDuration(params.modelId);
   const durationMin = minDurationForModel(params.modelId);
   const durationProgress = rangeProgress(params.duration, durationMin, 15);
@@ -1341,21 +1424,35 @@ export default function GenerateView() {
 
       const poll = async () => {
         try {
+          const liveTask = useAppStore
+            .getState()
+            .tasks.find((task) => task.id === localId);
+          if (
+            !liveTask ||
+            !["pending", "queued", "running"].includes(liveTask.status)
+          ) {
+            if (pollingRef.current[localId]) {
+              clearInterval(pollingRef.current[localId]);
+              delete pollingRef.current[localId];
+            }
+            return;
+          }
           const result = await getTaskStatus(key, taskId, taskParams.modelId);
+          const responseMeta = readTaskResponseMeta(
+            result as Record<string, unknown>
+          );
           const status = result.status;
 
           if (status === "succeeded") {
             const videoUrl = readContentUrl(result.content, "video_url");
             const lastFrameUrl = readContentUrl(result.content, "last_frame_url");
             updateTask(localId, {
+              ...responseMeta,
               status: "succeeded",
               videoUrl,
               lastFrameUrl,
               seed: result.seed,
               usage: result.usage,
-              actualDuration: result.duration,
-              actualRatio: result.ratio,
-              actualResolution: result.resolution,
             });
             if (!isAlibabaModel(taskParams.modelId)) {
               void reportUsageOnce(taskId, result.usage);
@@ -1366,6 +1463,7 @@ export default function GenerateView() {
             }
           } else if (status === "failed") {
             updateTask(localId, {
+              ...responseMeta,
               status: "failed",
               error: result.error?.message || "Generation failed",
             });
@@ -1375,6 +1473,7 @@ export default function GenerateView() {
             }
           } else if (status === "cancelled" || status === "expired") {
             updateTask(localId, {
+              ...responseMeta,
               status: status as "cancelled" | "expired",
               error: status === "expired" ? "Task expired" : "Task cancelled",
             });
@@ -1383,7 +1482,10 @@ export default function GenerateView() {
               delete pollingRef.current[localId];
             }
           } else {
-            updateTask(localId, { status: status === "queued" ? "queued" : "running" });
+            updateTask(localId, {
+              ...responseMeta,
+              status: status === "queued" ? "queued" : "running",
+            });
           }
         } catch (e) {
           const msg = e instanceof Error ? e.message : "Polling error";
@@ -1514,7 +1616,11 @@ export default function GenerateView() {
     for (const localId of localIds) {
       createGenerationTask(key, trimmedPrompt, activeReferences, singleParams)
         .then((result) => {
-          updateTask(localId, { taskId: result.id, status: "running" });
+          const initialStatus =
+            result.status === "pending" || result.status === "queued"
+              ? result.status
+              : "queued";
+          updateTask(localId, { taskId: result.id, status: initialStatus });
           pollTask(localId, result.id, singleParams);
         })
         .catch((e) => {
@@ -2019,6 +2125,7 @@ export default function GenerateView() {
                 {/* Prompt Input */}
                 <div
                   className="px-4 py-2"
+                  data-tour="prompt-editor"
                   data-prompt-editor-region
                   onPointerDown={() => {
                     setParamsOpen(false);
@@ -2112,6 +2219,7 @@ export default function GenerateView() {
                           type="button"
                           onClick={toggleComposerMode}
                           disabled={!canToggleComposerMode}
+                          data-tour="composer-mode"
                           data-no-composer-drag
                           className={`composer-action-chip composer-mode-chip ${
                             canToggleComposerMode
@@ -2130,6 +2238,7 @@ export default function GenerateView() {
                           <button
                             type="button"
                             onClick={toggleAudio}
+                            data-tour="composer-sound"
                             data-no-composer-drag
                             className={`composer-action-chip composer-sound-chip ${
                               params.generateAudio ? "composer-action-chip-active" : ""
@@ -2226,6 +2335,7 @@ export default function GenerateView() {
                     <button
                       ref={settingsButtonRef}
                       type="button"
+                      data-tour="composer-settings"
                       onClick={() => {
                         setActiveQuickPanel(null);
                         setParamsOpen((open) => !open);
@@ -2240,6 +2350,7 @@ export default function GenerateView() {
                       type="button"
                       onClick={handleGenerate}
                       disabled={generateDisabled}
+                      data-tour="generate-button"
                       title={generateDisabled ? "파일 업로드가 끝난 뒤 생성할 수 있습니다." : "Generate"}
                       className="composer-generate-button primary-button shrink-0 disabled:bg-gray-200 disabled:text-gray-300 text-white transition-all disabled:shadow-none"
                     >
@@ -2487,11 +2598,19 @@ export default function GenerateView() {
                 <p className="generation-confirm-kicker">Confirm generation</p>
                 <h2>이대로 생성 하시겠습니까?</h2>
                 <div className="generation-confirm-summary">
-                  <strong>{composerModelLabel}</strong>
-                  <span>
-                    {summaryDurationLabel} · {params.resolution} ·{" "}
-                    {composerRatioLabel}
-                  </span>
+                  <div className="generation-confirm-summary-model">
+                    <strong>{composerModelLabel}</strong>
+                  </div>
+                  <div className="generation-confirm-summary-settings">
+                    {confirmSettingItems.map((item, index) => (
+                      <span
+                        key={`${item}-${index}`}
+                        className="generation-confirm-setting-pill"
+                      >
+                        {item}
+                      </span>
+                    ))}
+                  </div>
                 </div>
                 <div className="generation-confirm-prompt">
                   <label>Prompt</label>
@@ -2528,6 +2647,13 @@ export default function GenerateView() {
               </div>
             </div>
           )}
+          <InteractiveTutorial
+            open={tutorialOpen}
+            onClose={() => {
+              setTutorialOpen(false);
+              window.localStorage.setItem("sd2_tutorial_seen", "1");
+            }}
+          />
         </div>
       </div>
     </div>

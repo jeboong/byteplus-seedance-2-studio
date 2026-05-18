@@ -18,13 +18,20 @@ export default function Onboarding({
   onComplete?: () => void;
   initialStage?: "intro" | "setup";
 }) {
+  const savedApiKey = useAppStore((s) => s.apiKey);
+  const savedAlibabaApiKey = useAppStore((s) => s.alibabaApiKey);
   const setApiKey = useAppStore((s) => s.setApiKey);
   const setAlibabaApiKey = useAppStore((s) => s.setAlibabaApiKey);
   const [stage, setStage] = useState<"intro" | "setup">(initialStage);
   const [introReady, setIntroReady] = useState(false);
-  const [selected, setSelected] = useState<ProviderId[]>(["byteplus"]);
-  const [key, setKey] = useState("");
-  const [alibabaKey, setAlibabaKey] = useState("");
+  const [selected, setSelected] = useState<ProviderId[]>(() => {
+    const initial: ProviderId[] = [];
+    if (savedApiKey) initial.push("byteplus");
+    if (savedAlibabaApiKey) initial.push("modelstudio");
+    return initial.length > 0 ? initial : ["byteplus"];
+  });
+  const [key, setKey] = useState(savedApiKey ?? "");
+  const [alibabaKey, setAlibabaKey] = useState(savedAlibabaApiKey ?? "");
   const [error, setError] = useState("");
 
   useEffect(() => {

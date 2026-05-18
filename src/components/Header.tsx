@@ -17,9 +17,9 @@ import {
 } from "@/lib/generationConfirm";
 import ThemeToggle from "./ThemeToggle";
 
-function openOnboarding(stage: "intro" | "setup") {
+function openOnboarding(stage: "intro" | "setup", tutorial = false) {
   window.dispatchEvent(
-    new CustomEvent("sd2:open-onboarding", { detail: { stage } })
+    new CustomEvent("sd2:open-onboarding", { detail: { stage, tutorial } })
   );
 }
 
@@ -114,12 +114,12 @@ export default function Header() {
               type="button"
               onClick={() => {
                 setOpen(false);
-                openOnboarding("intro");
+                openOnboarding("intro", true);
               }}
               className="app-settings-item"
             >
               <RotateCcw className="h-4 w-4" />
-              <span>온보딩 다시 보기</span>
+              <span>온보딩/튜토리얼 다시보기</span>
             </button>
             <button
               type="button"

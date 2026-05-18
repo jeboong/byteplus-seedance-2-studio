@@ -145,10 +145,13 @@ export interface GenerationTask {
   videoUrl?: string;
   lastFrameUrl?: string;
   error?: string;
+  errorCode?: string;
   params: ModelParams;
   references?: ReferenceAsset[];
   createdAt: number;
+  updatedAt?: number;
   completedAt?: number;
+  sourceModel?: string;
   seed?: number;
   usage?: {
     completion_tokens?: number;
@@ -163,6 +166,14 @@ export interface GenerationTask {
   actualDuration?: number;
   actualRatio?: string;
   actualResolution?: string;
+  actualFrames?: number;
+  framesPerSecond?: number;
+  generatedAudio?: boolean;
+  safetyIdentifier?: string;
+  draft?: boolean;
+  draftTaskId?: string;
+  serviceTier?: string;
+  executionExpiresAfter?: number;
 }
 
 export const DEFAULT_PARAMS: ModelParams = {

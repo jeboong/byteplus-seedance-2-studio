@@ -19,6 +19,8 @@ export default function Home() {
   const [onboardingStage, setOnboardingStage] = useState<"intro" | "setup">(
     "intro"
   );
+  const [tutorialAfterOnboarding, setTutorialAfterOnboarding] = useState(false);
+  const [pendingTutorial, setPendingTutorial] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("ark_api_key");
@@ -36,9 +38,12 @@ export default function Home() {
 
   useEffect(() => {
     const handleOpenOnboarding = (event: Event) => {
-      const detail = (event as CustomEvent<{ stage?: "intro" | "setup" }>)
-        .detail;
+      const detail = (event as CustomEvent<{
+        stage?: "intro" | "setup";
+        tutorial?: boolean;
+      }>).detail;
       setOnboardingStage(detail?.stage ?? "intro");
+      setTutorialAfterOnboarding(detail?.tutorial === true);
       setShowOnboarding(true);
     };
     window.addEventListener("sd2:open-onboarding", handleOpenOnboarding);
@@ -47,10 +52,49 @@ export default function Home() {
     };
   }, []);
 
-  const handleBrowse = () => {
+  useEffect(() => {
+    if (
+      !loaded ||
+      showOnboarding ||
+      !pendingTutorial ||
+      (!apiKey && !alibabaApiKey && !browseMode)
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      window.dispatchEvent(new Event("sd2:start-tutorial"));
+      setPendingTutorial(false);
+    }, 520);
+    return () => window.clearTimeout(timer);
+  }, [
+    alibabaApiKey,
+    apiKey,
+    browseMode,
+    loaded,
+    pendingTutorial,
+    showOnboarding,
+  ]);
+
+  const shouldRunFirstTutorial = () =>
+    typeof window !== "undefined" &&
+    window.localStorage.getItem("sd2_tutorial_seen") !== "1";
+
+  const handleOnboardingComplete = (forceTutorial = false) => {
+    setShowOnboarding(false);
+    setTutorialAfterOnboarding(false);
+    if (forceTutorial || shouldRunFirstTutorial()) {
+      setPendingTutorial(true);
+    }
+  };
+
+  const handleBrowse = (forceTutorial = false) => {
     localStorage.setItem("sd2_browse_mode", "1");
     setBrowseMode(true);
     setShowOnboarding(false);
+    setTutorialAfterOnboarding(false);
+    if (forceTutorial || shouldRunFirstTutorial()) {
+      setPendingTutorial(true);
+    }
   };
 
   if (!loaded) {
@@ -67,14 +111,19 @@ export default function Home() {
     return (
       <Onboarding
         initialStage={onboardingStage}
-        onBrowse={handleBrowse}
-        onComplete={() => setShowOnboarding(false)}
+        onBrowse={() => handleBrowse(tutorialAfterOnboarding)}
+        onComplete={() => handleOnboardingComplete(tutorialAfterOnboarding)}
       />
     );
   }
 
   if (!apiKey && !alibabaApiKey && !browseMode) {
-    return <Onboarding onBrowse={handleBrowse} />;
+    return (
+      <Onboarding
+        onBrowse={() => handleBrowse(false)}
+        onComplete={() => handleOnboardingComplete(false)}
+      />
+    );
   }
 
   return <GenerateView />;

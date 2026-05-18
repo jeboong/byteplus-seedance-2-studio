@@ -107,6 +107,7 @@ function ReferenceThumb({
       : asset.role === "last_frame"
       ? "L"
       : "";
+  const tagNumber = tag?.match(/\d+/)?.[0];
 
   const content = (
     <>
@@ -126,9 +127,9 @@ function ReferenceThumb({
       ) : (
         <ImageIcon className="w-3.5 h-3.5 text-gray-400" />
       )}
-      {tag && (
-        <span className="absolute top-0 left-0 bg-primary-500/90 text-white text-[7px] font-bold px-0.5 leading-tight rounded-br">
-          {tag.replace("@", "")}
+      {tagNumber && (
+        <span className="task-reference-tag-overlay">
+          {tagNumber}
         </span>
       )}
       {roleLabel && (
@@ -271,11 +272,13 @@ function HoverVideo({
   compact,
   ratio,
   fill,
+  controls = false,
 }: {
   src: string;
   compact?: boolean;
   ratio?: string;
   fill?: boolean;
+  controls?: boolean;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -324,15 +327,16 @@ function HoverVideo({
         <video
           ref={videoRef}
           src={src}
-          muted
-          loop
+          controls={controls}
+          muted={!controls}
+          loop={!controls}
           playsInline
-          preload="metadata"
+          preload={controls ? "auto" : "metadata"}
           className="absolute inset-0 w-full h-full object-cover"
-          onMouseEnter={play}
-          onMouseLeave={pause}
-          onFocus={play}
-          onBlur={pause}
+          onMouseEnter={controls ? undefined : play}
+          onMouseLeave={controls ? undefined : pause}
+          onFocus={controls ? undefined : play}
+          onBlur={controls ? undefined : pause}
           onLoadedMetadata={() => setLoadError(false)}
           onError={() => setLoadError(true)}
         />
@@ -440,19 +444,43 @@ function InlineTaskDetails({
         <div className="task-inline-label">Details</div>
         <dl className="task-inline-dl">
           <dt>Model</dt>
-          <dd>{taskModel.name}</dd>
+          <dd>{task.sourceModel || taskModel.name}</dd>
           <dt>Mode</dt>
           <dd>{modeLabel}</dd>
           <dt>Duration</dt>
-          <dd>{actualDuration ? `${actualDuration}s` : "Auto"}</dd>
+          <dd>
+            {actualDuration
+              ? `${actualDuration}s`
+              : typeof task.actualFrames === "number"
+              ? `${task.actualFrames} frames`
+              : "Auto"}
+          </dd>
+          {typeof task.framesPerSecond === "number" && (
+            <>
+              <dt>FPS</dt>
+              <dd>{task.framesPerSecond}</dd>
+            </>
+          )}
           <dt>Ratio</dt>
           <dd>{task.actualRatio || task.params.ratio}</dd>
           <dt>Resolution</dt>
           <dd>{task.actualResolution || task.params.resolution}</dd>
+          {typeof task.generatedAudio === "boolean" && (
+            <>
+              <dt>Audio</dt>
+              <dd>{task.generatedAudio ? "On" : "Off"}</dd>
+            </>
+          )}
           {getTaskElapsedLabel(task) && (
             <>
               <dt>Elapsed</dt>
               <dd>{getTaskElapsedLabel(task)}</dd>
+            </>
+          )}
+          {task.serviceTier && (
+            <>
+              <dt>Tier</dt>
+              <dd>{task.serviceTier}</dd>
             </>
           )}
           <dt>Status</dt>
@@ -611,7 +639,11 @@ function TaskCard({
   );
   const isAlibaba = isAlibabaModel(task.params.modelId);
   const taskApiKey = isAlibaba ? alibabaApiKey : apiKey;
-  const canCancel = task.status === "queued" && !isAlibaba;
+  const canCancel =
+    !isAlibaba &&
+    !task.demo &&
+    Boolean(task.taskId) &&
+    (task.status === "pending" || task.status === "queued");
   const isGenerating = ["pending", "queued", "running"].includes(task.status);
   const taskModel = getModelOption(task.params.modelId);
   const canExpandMedia = Boolean(isFinished);
@@ -637,7 +669,7 @@ function TaskCard({
         video.controls = true;
         const removeControls = () => {
           if (!document.fullscreenElement) {
-            video.controls = false;
+            if (!expanded) video.controls = false;
             document.removeEventListener("fullscreenchange", removeControls);
           }
         };
@@ -661,7 +693,7 @@ function TaskCard({
         window.open(task.videoUrl, "_blank", "noopener,noreferrer");
       }
     },
-    [task.videoUrl]
+    [expanded, task.videoUrl]
   );
 
   const handleDelete = useCallback(async () => {
@@ -705,15 +737,20 @@ function TaskCard({
     setDeleting(true);
     try {
       await deleteTask(taskApiKey, task.taskId, task.params.modelId);
-      useAppStore.getState().updateTask(task.id, { status: "cancelled" });
-    } catch {
-      /* ignore */
+      useAppStore.getState().updateTask(task.id, {
+        status: "cancelled",
+        error: "Task cancelled",
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Cancel request failed";
+      useAppStore.getState().updateTask(task.id, { error: message });
     }
     setDeleting(false);
   }, [taskApiKey, task.taskId, task.id, task.params.modelId]);
 
   const openDetailFromBody = useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => {
+    (event: React.MouseEvent<HTMLElement>) => {
       const target = event.target;
       if (
         target instanceof HTMLElement &&
@@ -733,6 +770,36 @@ function TaskCard({
       }
     },
     [compact, onOpenDetail, onToggleExpand, onToggleSelect, selectionMode]
+  );
+
+  const openDetailFromMedia = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest("button,a,input,textarea,select,[data-no-task-click]")
+      ) {
+        return;
+      }
+      event.stopPropagation();
+      if (selectionMode) {
+        onToggleSelect?.();
+        return;
+      }
+      if (compact) {
+        onOpenDetail();
+      } else if (!expanded) {
+        onToggleExpand?.();
+      }
+    },
+    [
+      compact,
+      expanded,
+      onOpenDetail,
+      onToggleExpand,
+      onToggleSelect,
+      selectionMode,
+    ]
   );
 
   const handleCardSelectClick = useCallback(
@@ -819,12 +886,16 @@ function TaskCard({
       {isFinished && task.videoUrl ? (
         <div
           ref={mediaRef}
-          className="task-card-media bg-black overflow-hidden flex-shrink-0 relative group"
+          className="task-card-media bg-black overflow-hidden flex-shrink-0 relative group cursor-pointer"
+          data-no-task-drag
+          onClick={openDetailFromMedia}
+          title={compact ? "상세보기" : expanded ? undefined : "상세보기"}
         >
           <HoverVideo
             src={task.videoUrl}
             compact={compact}
             fill
+            controls={expanded && !compact}
             ratio={task.actualRatio || task.params.ratio}
           />
         </div>
@@ -839,6 +910,23 @@ function TaskCard({
             <div className="task-generation-elapsed" aria-label="생성 경과 시간">
               {generationElapsedLabel}
             </div>
+          )}
+          {canCancel && (
+            <button
+              type="button"
+              onClick={handleCancel}
+              disabled={deleting}
+              className="task-generation-cancel-button"
+              title="대기 중인 생성 요청 취소"
+              aria-label="대기 중인 생성 요청 취소"
+            >
+              {deleting ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Ban className="h-3 w-3" />
+              )}
+              <span>생성 취소</span>
+            </button>
           )}
         </div>
       ) : (
@@ -862,6 +950,23 @@ function TaskCard({
             <p className="text-[10px] text-orange-500/80 max-w-xs text-center mt-1 px-4">
               비디오 URL이 만료되었습니다 (24시간). 새로 생성해 주세요.
             </p>
+          )}
+          {task.status === "failed" && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="task-status-delete-button"
+              title="실패한 요청 삭제"
+              aria-label="실패한 요청 삭제"
+            >
+              {deleting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <XCircle className="h-3.5 w-3.5" />
+              )}
+              <span>삭제</span>
+            </button>
           )}
         </div>
       )}
@@ -1007,17 +1112,6 @@ function TaskCard({
                 )}
               </button>
             )}
-            {canCancel && (
-              <button
-                onClick={handleCancel}
-                disabled={deleting}
-                className="task-icon-button text-orange-500 hover:bg-orange-50"
-                title="Cancel task"
-                aria-label="Cancel task"
-              >
-                <Ban className="w-3 h-3" />
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -1043,7 +1137,10 @@ function ViewToggle({
   onChange: (m: ViewMode) => void;
 }) {
   return (
-    <div className="view-toggle inline-flex items-center rounded-lg p-0.5">
+    <div
+      className="view-toggle inline-flex items-center rounded-lg p-0.5"
+      data-tour="view-toggle"
+    >
       <button
         onClick={() => onChange("free")}
         title="Free board"
@@ -1181,22 +1278,6 @@ export default function VideoResult() {
     setSelectedTaskIds(new Set());
   }, [clearTasks, deleteAllConfirm]);
 
-  if (tasks.length === 0) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="glass-panel motion-rise rounded-2xl px-8 py-7 text-center subtle-glow">
-          <div className="glass-chip w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3">
-            <RefreshCw className="w-5 h-5 text-gray-300" />
-          </div>
-          <p className="text-sm text-gray-400 mb-1">No generations yet</p>
-          <p className="text-xs text-gray-300">
-            프롬프트를 입력하고 Generate를 클릭하세요
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div>
       <div className="results-toolbar flex items-center gap-2">
@@ -1271,7 +1352,19 @@ export default function VideoResult() {
         {tasks.length} tasks
       </div>
 
-      {viewMode === "free" ? (
+      {tasks.length === 0 ? (
+        <div className="flex min-h-[38vh] items-center justify-center">
+          <div className="glass-panel motion-rise rounded-2xl px-8 py-7 text-center subtle-glow">
+            <div className="glass-chip w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <RefreshCw className="w-5 h-5 text-gray-300" />
+            </div>
+            <p className="text-sm text-gray-400 mb-1">No generations yet</p>
+            <p className="text-xs text-gray-300">
+              프롬프트를 입력하고 Generate를 클릭하세요
+            </p>
+          </div>
+        </div>
+      ) : viewMode === "free" ? (
         <div
           className="task-list-board free-board relative mx-auto flex w-full max-w-5xl flex-col gap-8"
         >

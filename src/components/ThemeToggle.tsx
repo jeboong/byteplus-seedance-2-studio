@@ -19,6 +19,7 @@ export default function ThemeToggle() {
       onClick={toggleTheme}
       aria-label={isDark ? "Toggle light mode" : "Toggle dark mode"}
       title={isDark ? "Light mode" : "Dark mode"}
+      data-tour="theme-toggle"
       className="glass-chip p-2 rounded-lg text-gray-400 hover:text-gray-600 transition-colors"
     >
       {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
