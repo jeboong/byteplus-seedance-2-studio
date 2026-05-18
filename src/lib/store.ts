@@ -9,6 +9,7 @@ import {
 
 const TASKS_KEY = "sd2_tasks";
 const DRAFT_KEY = "sd2_composer_draft";
+const REF_DATA_PREFIX = "sd2_ref_data";
 const PERSIST_DEBOUNCE_MS = 800;
 const DEMO_VIDEO_URL =
   "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
@@ -29,38 +30,112 @@ interface ComposerDraft {
   updatedAt: number;
 }
 
-/**
- * Strip base64 payloads from a task before writing to IndexedDB.
- * Keeps lightweight metadata (id, name, type, role) so reuse UI can
- * still show "[image attachment]" placeholders and asset:// IDs survive.
- *
- * Why: keeping data: URIs in persistent storage causes 30–50MB of state
- * to be pulled into memory on every hydrate, which makes the page feel
- * sluggish (jank on scroll, slow initial render).
- */
-function slimTaskForPersist(task: GenerationTask): GenerationTask {
-  if (!task.references || task.references.length === 0) return task;
-  const refs = task.references.map((r) => {
-    const isHeavy =
-      typeof r.url === "string" && r.url.startsWith("data:");
-    const previewIsHeavy =
-      typeof r.preview === "string" && r.preview.startsWith("data:");
-    if (!isHeavy && !previewIsHeavy) return r;
-    return {
-      ...r,
-      url: isHeavy ? "" : r.url,
-      preview: previewIsHeavy ? undefined : r.preview,
-    };
+function isDataUri(value?: string): value is string {
+  return typeof value === "string" && value.startsWith("data:");
+}
+
+function refDataKey(taskId: string, refId: string, slot: "url" | "preview") {
+  return `${REF_DATA_PREFIX}:${taskId}:${refId}:${slot}`;
+}
+
+async function stashRefDataUri(
+  value: string,
+  fallbackKey: string
+): Promise<string> {
+  await idbSet(fallbackKey, value);
+  return fallbackKey;
+}
+
+async function restoreRefDataUri(key?: string): Promise<string | undefined> {
+  if (!key) return undefined;
+  const value = await idbGet<string>(key);
+  return typeof value === "string" ? value : undefined;
+}
+
+function getTaskReferenceStorageKeys(task: GenerationTask): string[] {
+  const keys = new Set<string>();
+  task.references?.forEach((ref) => {
+    if (ref.urlStorageKey) keys.add(ref.urlStorageKey);
+    if (ref.previewStorageKey) keys.add(ref.previewStorageKey);
   });
+  return Array.from(keys);
+}
+
+function deleteTaskReferenceData(task: GenerationTask) {
+  if (typeof window === "undefined") return;
+  getTaskReferenceStorageKeys(task).forEach((key) => {
+    idbDel(key).catch(() => {});
+  });
+}
+
+/**
+ * Strip heavy base64 payloads from the task JSON before writing task state.
+ * The payloads themselves are kept in separate IndexedDB records and linked
+ * back through storage keys, so completed task thumbnails survive dev-server
+ * restarts without dragging giant strings through every task list render.
+ */
+async function slimTaskForPersist(task: GenerationTask): Promise<GenerationTask> {
+  if (!task.references || task.references.length === 0) return task;
+  const refs = await Promise.all(
+    task.references.map(async (r) => {
+      let next = { ...r };
+      let urlStorageKey = r.urlStorageKey;
+
+      if (isDataUri(r.url)) {
+        urlStorageKey =
+          r.urlStorageKey ?? refDataKey(task.id, r.id, "url");
+        await stashRefDataUri(r.url, urlStorageKey);
+        next = { ...next, url: "", urlStorageKey };
+      }
+
+      if (isDataUri(r.preview)) {
+        const previewStorageKey =
+          r.preview === r.url && urlStorageKey
+            ? urlStorageKey
+            : r.previewStorageKey ?? refDataKey(task.id, r.id, "preview");
+        if (previewStorageKey !== urlStorageKey) {
+          await stashRefDataUri(r.preview, previewStorageKey);
+        }
+        next = { ...next, preview: undefined, previewStorageKey };
+      }
+
+      return next;
+    })
+  );
   return { ...task, references: refs };
+}
+
+async function restoreTaskReferences(
+  task: GenerationTask
+): Promise<GenerationTask> {
+  if (!task.references || task.references.length === 0) return task;
+  const refs = await Promise.all(
+    task.references.map(async (ref) => {
+      const restoredUrl = ref.url || (await restoreRefDataUri(ref.urlStorageKey));
+      const restoredPreview =
+        ref.preview ||
+        (await restoreRefDataUri(ref.previewStorageKey)) ||
+        (ref.type === "image" ? restoredUrl : undefined);
+      return {
+        ...ref,
+        url: restoredUrl ?? ref.url,
+        preview: restoredPreview,
+      };
+    })
+  );
+  return { ...task, references: refs };
+}
+
+async function persistTasksNow(tasks: GenerationTask[]) {
+  const slim = await Promise.all(tasks.map(slimTaskForPersist));
+  await idbSet(TASKS_KEY, slim);
 }
 
 function persistTasks(tasks: GenerationTask[]) {
   if (typeof window === "undefined") return;
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
-    const slim = tasks.map(slimTaskForPersist);
-    idbSet(TASKS_KEY, slim).catch((err) => {
+    persistTasksNow(tasks).catch((err) => {
       console.error("[store] IndexedDB persist failed:", err);
     });
   }, PERSIST_DEBOUNCE_MS);
@@ -255,12 +330,15 @@ export const useAppStore = create<AppState>((set) => ({
     }),
   removeTask: (id) =>
     set((s) => {
+      const removed = s.tasks.find((t) => t.id === id);
+      if (removed) deleteTaskReferenceData(removed);
       const next = s.tasks.filter((t) => t.id !== id);
       persistTasks(next);
       return { tasks: next };
     }),
   clearTasks: () => {
     if (typeof window !== "undefined") {
+      useAppStore.getState().tasks.forEach(deleteTaskReferenceData);
       idbDel(TASKS_KEY).catch(() => {});
     }
     set({ tasks: [] });
@@ -269,6 +347,9 @@ export const useAppStore = create<AppState>((set) => ({
     set((s) => {
       const next = s.tasks.filter((task) => !isDemoTask(task));
       if (next.length === s.tasks.length) return {};
+      s.tasks
+        .filter((task) => isDemoTask(task))
+        .forEach(deleteTaskReferenceData);
       persistTasks(next);
       return { tasks: next };
     }),
@@ -281,6 +362,8 @@ export const useAppStore = create<AppState>((set) => ({
       const refs = (task.references || []).map((r) => ({
         ...r,
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        urlStorageKey: undefined,
+        previewStorageKey: undefined,
       }));
       const params = { ...DEFAULT_PARAMS, ...task.params };
       persistDraft({
@@ -329,12 +412,16 @@ export async function hydrateTasks(): Promise<void> {
     }
 
     if (Array.isArray(saved)) {
+      saved = await Promise.all(saved.map(restoreTaskReferences));
       const demoMode = localStorage.getItem("sd2_demo_mode") === "1";
       if (!demoMode) {
         const filtered = saved.filter((task) => !isDemoTask(task));
         if (filtered.length !== saved.length) {
+          saved
+            .filter((task) => isDemoTask(task))
+            .forEach(deleteTaskReferenceData);
           saved = filtered;
-          await idbSet(TASKS_KEY, filtered);
+          await persistTasksNow(filtered);
         }
       }
       useAppStore.setState({ tasks: saved, tasksHydrated: true });

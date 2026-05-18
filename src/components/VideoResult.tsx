@@ -18,6 +18,7 @@ import {
   ChevronLeft,
   LayoutList,
   LayoutGrid,
+  Trash2,
   Ban,
   Timer,
   ImageIcon,
@@ -510,8 +511,6 @@ function TaskCard({
   expanded = false,
   onToggleExpand,
   selectionMode = false,
-  selected = false,
-  onToggleSelect,
 }: {
   task: GenerationTask;
   compact?: boolean;
@@ -519,8 +518,6 @@ function TaskCard({
   expanded?: boolean;
   onToggleExpand?: () => void;
   selectionMode?: boolean;
-  selected?: boolean;
-  onToggleSelect?: () => void;
 }) {
   const { apiKey, alibabaApiKey, removeTask, loadFromTask } = useAppStore();
   const [deleting, setDeleting] = useState(false);
@@ -760,7 +757,6 @@ function TaskCard({
       }
       event.stopPropagation();
       if (selectionMode) {
-        onToggleSelect?.();
         return;
       }
       if (compact) {
@@ -769,7 +765,7 @@ function TaskCard({
         onToggleExpand?.();
       }
     },
-    [compact, onOpenDetail, onToggleExpand, onToggleSelect, selectionMode]
+    [compact, onOpenDetail, onToggleExpand, selectionMode]
   );
 
   const openDetailFromMedia = useCallback(
@@ -783,7 +779,6 @@ function TaskCard({
       }
       event.stopPropagation();
       if (selectionMode) {
-        onToggleSelect?.();
         return;
       }
       if (compact) {
@@ -797,25 +792,18 @@ function TaskCard({
       expanded,
       onOpenDetail,
       onToggleExpand,
-      onToggleSelect,
       selectionMode,
     ]
   );
 
-  const handleCardSelectClick = useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => {
-      if (!selectionMode) return;
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        target.closest("button,a,input,textarea,select,video,[data-no-task-click]")
-      ) {
-        return;
-      }
+  const handleDeleteModeClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
       event.stopPropagation();
-      onToggleSelect?.();
+      if (deleting) return;
+      void handleDelete();
     },
-    [onToggleSelect, selectionMode]
+    [deleting, handleDelete]
   );
 
   return (
@@ -826,29 +814,9 @@ function TaskCard({
         isFinished ? "task-card-finished" : ""
       } rounded-2xl border overflow-hidden h-full flex flex-col ${
         expanded ? "task-card-expanded" : ""
-      } ${selectionMode ? "task-card-selectable" : ""} ${
-        selected ? "task-card-selected" : ""
-      }`}
+      } ${selectionMode ? "task-card-delete-mode" : ""}`}
       onContextMenu={openDeleteMenu}
-      onClick={handleCardSelectClick}
     >
-      {selectionMode && (
-        <button
-          type="button"
-          data-no-task-drag
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggleSelect?.();
-          }}
-          className="task-select-check"
-          title="선택"
-          aria-label={selected ? "선택 해제" : "선택"}
-          aria-pressed={selected}
-        >
-          {selected && <Check className="h-3.5 w-3.5" />}
-        </button>
-      )}
       {canExpandMedia && (
         <button
           data-no-task-drag
@@ -859,6 +827,25 @@ function TaskCard({
           aria-label="전체화면 보기"
         >
           <Maximize2 className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
+        </button>
+      )}
+      {selectionMode && (
+        <button
+          type="button"
+          className="task-delete-mode-overlay"
+          onClick={handleDeleteModeClick}
+          disabled={deleting}
+          aria-label="이 작업 삭제"
+          title="클릭하여 삭제"
+        >
+          <span className="task-delete-mode-label">
+            {deleting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Trash2 className="h-3.5 w-3.5" />
+            )}
+            <span>{deleting ? "삭제 중" : "클릭하여 삭제"}</span>
+          </span>
         </button>
       )}
       {deleteMenu && canDelete && (
@@ -1168,15 +1155,12 @@ function ViewToggle({
 }
 
 export default function VideoResult() {
-  const { tasks, clearTasks, removeTask } = useAppStore();
+  const { tasks, clearTasks } = useAppStore();
   const [viewMode, setViewMode] = useState<ViewMode>("free");
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
   const [taskActionsOpen, setTaskActionsOpen] = useState(false);
   const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(
-    () => new Set()
-  );
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
 
   const detailTask =
@@ -1185,29 +1169,22 @@ export default function VideoResult() {
       : null;
 
   useEffect(() => {
-    setSelectedTaskIds((current) => {
-      if (current.size === 0) return current;
-      const liveIds = new Set(tasks.map((task) => task.id));
-      let changed = false;
-      const next = new Set<string>();
-      current.forEach((id) => {
-        if (liveIds.has(id)) {
-          next.add(id);
-        } else {
-          changed = true;
-        }
-      });
-      return changed ? next : current;
-    });
-  }, [tasks]);
-
-  useEffect(() => {
     if (tasks.length > 0) return;
     setTaskActionsOpen(false);
     setDeleteAllConfirm(false);
     setSelectionMode(false);
-    setSelectedTaskIds(new Set());
   }, [tasks.length]);
+
+  useEffect(() => {
+    if (!selectionMode) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelectionMode(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectionMode]);
 
   useEffect(() => {
     if (!expandedTaskId || viewMode !== "free") return;
@@ -1232,41 +1209,16 @@ export default function VideoResult() {
     setTaskActionsOpen(false);
     setDeleteAllConfirm(false);
     setSelectionMode(false);
-    setSelectedTaskIds(new Set());
   }, []);
 
-  const toggleTaskSelection = useCallback((id: string) => {
+  const handleDeleteModeToggle = useCallback(() => {
     setDeleteAllConfirm(false);
-    setSelectedTaskIds((current) => {
-      const next = new Set(current);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
+    setSelectionMode((current) => !current);
   }, []);
-
-  const handleSelectionDelete = useCallback(() => {
-    setDeleteAllConfirm(false);
-    if (!selectionMode) {
-      setSelectionMode(true);
-      setSelectedTaskIds(new Set());
-      return;
-    }
-
-    if (selectedTaskIds.size === 0) return;
-    selectedTaskIds.forEach((id) => removeTask(id));
-    setSelectionMode(false);
-    setSelectedTaskIds(new Set());
-    setTaskActionsOpen(false);
-  }, [removeTask, selectedTaskIds, selectionMode]);
 
   const handleDeleteAll = useCallback(() => {
     if (!deleteAllConfirm) {
       setSelectionMode(false);
-      setSelectedTaskIds(new Set());
       setDeleteAllConfirm(true);
       return;
     }
@@ -1275,7 +1227,6 @@ export default function VideoResult() {
     setTaskActionsOpen(false);
     setDeleteAllConfirm(false);
     setSelectionMode(false);
-    setSelectedTaskIds(new Set());
   }, [clearTasks, deleteAllConfirm]);
 
   return (
@@ -1300,23 +1251,19 @@ export default function VideoResult() {
               <span className="task-action-split-divider" aria-hidden />
               <button
                 type="button"
-                onClick={handleSelectionDelete}
-                disabled={selectionMode && selectedTaskIds.size === 0}
+                onClick={handleDeleteModeToggle}
                 className={`task-action-split-text-button ${
                   selectionMode ? "task-action-split-selected" : ""
                 }`}
                 title={
                   selectionMode
-                    ? selectedTaskIds.size > 0
-                      ? `${selectedTaskIds.size}개 선택 삭제`
-                      : "삭제할 작업을 선택하세요"
-                    : "선택삭제"
+                    ? "삭제모드 활성화됨. ESC로 종료"
+                    : "삭제모드"
                 }
-                aria-label="선택삭제"
+                aria-label="삭제모드"
+                aria-pressed={selectionMode}
               >
-                {selectionMode && selectedTaskIds.size > 0
-                  ? `선택삭제 ${selectedTaskIds.size}`
-                  : "선택삭제"}
+                삭제모드
               </button>
               <span className="task-action-split-divider" aria-hidden />
               <button
@@ -1342,7 +1289,7 @@ export default function VideoResult() {
               title="작업 관리"
               aria-label="작업 관리 열기"
             >
-              <X className="h-4 w-4" />
+              <Trash2 className="h-4 w-4" />
             </button>
           )}
         </div>
@@ -1379,8 +1326,6 @@ export default function VideoResult() {
                 )
               }
               selectionMode={selectionMode}
-              selected={selectedTaskIds.has(task.id)}
-              onToggleSelect={() => toggleTaskSelection(task.id)}
               onOpenDetail={() =>
                 setExpandedTaskId((current) =>
                   current === task.id ? null : task.id
@@ -1403,8 +1348,6 @@ export default function VideoResult() {
                 )
               }
               selectionMode={selectionMode}
-              selected={selectedTaskIds.has(task.id)}
-              onToggleSelect={() => toggleTaskSelection(task.id)}
               onOpenDetail={() => setDetailTaskId(task.id)}
             />
           ))}

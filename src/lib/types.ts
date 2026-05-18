@@ -131,6 +131,8 @@ export interface ReferenceAsset {
   name: string;
   role: string;
   preview?: string;
+  urlStorageKey?: string;
+  previewStorageKey?: string;
   uploadProvider?: ModelProvider;
   /** True while a local file is being uploaded to a provider file store. */
   uploading?: boolean;

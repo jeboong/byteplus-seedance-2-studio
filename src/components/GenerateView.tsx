@@ -155,6 +155,7 @@ const BYTEPLUS_MODE_CYCLE: ModelParamsType["mode"][] = [
   "reference",
   "first_last_frame",
 ];
+type QuickPanel = "ratio" | "resolution" | "duration";
 const RESOLUTION_OPTIONS = ["480p", "720p", "1080p"] as const;
 
 function RatioPreview({ ratio }: { ratio: AspectRatio }) {
@@ -248,9 +249,9 @@ export default function GenerateView() {
   } = useAppStore();
   const [error, setError] = useState("");
   const [paramsOpen, setParamsOpen] = useState(false);
-  const [activeQuickPanel, setActiveQuickPanel] = useState<
-    "ratio" | "resolution" | "duration" | null
-  >(null);
+  const [activeQuickPanel, setActiveQuickPanel] = useState<QuickPanel | null>(
+    null
+  );
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmCountdown, setConfirmCountdown] = useState(
     GENERATION_CONFIRM_COUNTDOWN_SECONDS
@@ -288,6 +289,9 @@ export default function GenerateView() {
   const composerRef = useRef<HTMLDivElement>(null);
   const paramsPopoverRef = useRef<HTMLDivElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const quickPanelCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
   const firstFrameInputRef = useRef<HTMLInputElement>(null);
   const lastFrameInputRef = useRef<HTMLInputElement>(null);
   const referenceFileInputRef = useRef<HTMLInputElement>(null);
@@ -374,6 +378,14 @@ export default function GenerateView() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [activeQuickPanel, paramsOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (quickPanelCloseTimerRef.current) {
+        clearTimeout(quickPanelCloseTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!paramsOpen) return;
@@ -1262,13 +1274,30 @@ export default function GenerateView() {
     setPromptExpanded(true);
   }, [isAlibaba, params.generateAudio, setParams]);
 
+  const cancelQuickPanelClose = useCallback(() => {
+    if (!quickPanelCloseTimerRef.current) return;
+    clearTimeout(quickPanelCloseTimerRef.current);
+    quickPanelCloseTimerRef.current = null;
+  }, []);
+
+  const scheduleQuickPanelClose = useCallback(() => {
+    if (quickPanelCloseTimerRef.current) {
+      clearTimeout(quickPanelCloseTimerRef.current);
+    }
+    quickPanelCloseTimerRef.current = setTimeout(() => {
+      setActiveQuickPanel(null);
+      quickPanelCloseTimerRef.current = null;
+    }, 260);
+  }, []);
+
   const openQuickPanel = useCallback(
-    (panel: "ratio" | "resolution" | "duration") => {
+    (panel: QuickPanel) => {
       if (!isExpanded) return;
+      cancelQuickPanelClose();
       setParamsOpen(false);
       setActiveQuickPanel(panel);
     },
-    [isExpanded]
+    [cancelQuickPanelClose, isExpanded]
   );
 
   const handleRatioQuickClick = useCallback(() => {
@@ -1288,12 +1317,8 @@ export default function GenerateView() {
   }, [activeQuickPanel, cycleResolution, openQuickPanel]);
 
   const handleDurationQuickClick = useCallback(() => {
-    if (!isExpanded) return;
-    setParamsOpen(false);
-    setActiveQuickPanel((current) =>
-      current === "duration" ? null : "duration"
-    );
-  }, [isExpanded]);
+    openQuickPanel("duration");
+  }, [openQuickPanel]);
 
   const handleExternalReferenceSubmit = useCallback(() => {
     const value = externalReferenceValue.trim();
@@ -2256,6 +2281,9 @@ export default function GenerateView() {
                         )}
                         <button
                           type="button"
+                          onMouseEnter={() => openQuickPanel("ratio")}
+                          onMouseLeave={scheduleQuickPanelClose}
+                          onFocus={() => openQuickPanel("ratio")}
                           onClick={handleRatioQuickClick}
                           disabled={!canAdjustRatio}
                           data-no-composer-drag
@@ -2275,6 +2303,9 @@ export default function GenerateView() {
                         </button>
                         <button
                           type="button"
+                          onMouseEnter={() => openQuickPanel("resolution")}
+                          onMouseLeave={scheduleQuickPanelClose}
+                          onFocus={() => openQuickPanel("resolution")}
                           onClick={handleResolutionQuickClick}
                           data-no-composer-drag
                           aria-pressed={activeQuickPanel === "resolution"}
@@ -2289,6 +2320,9 @@ export default function GenerateView() {
                         </button>
                         <button
                           type="button"
+                          onMouseEnter={() => openQuickPanel("duration")}
+                          onMouseLeave={scheduleQuickPanelClose}
+                          onFocus={() => openQuickPanel("duration")}
                           onClick={handleDurationQuickClick}
                           data-no-composer-drag
                           aria-pressed={activeQuickPanel === "duration"}
@@ -2365,6 +2399,9 @@ export default function GenerateView() {
                   className="composer-settings-popover composer-quick-popover pointer-events-auto absolute left-0 z-50"
                   style={{ bottom: "3.55rem" }}
                   data-no-composer-drag
+                  onMouseEnter={cancelQuickPanelClose}
+                  onMouseLeave={scheduleQuickPanelClose}
+                  onFocus={cancelQuickPanelClose}
                   onPointerDown={(event) => event.stopPropagation()}
                 >
                   <div className="model-settings-composer composer-quick-panel glass-panel rounded-[1.35rem] border p-4">
