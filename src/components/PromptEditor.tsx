@@ -34,11 +34,12 @@ type HighlightPart =
   | { kind: "text"; text: string; key: string }
   | { kind: "tag"; text: string; key: string; type: TagItem["type"] };
 
-function getMentionState(textarea: HTMLTextAreaElement): {
+function getMentionState(textarea?: HTMLTextAreaElement | null): {
   query: string;
   start: number;
   cursor: number;
 } | null {
+  if (!textarea) return null;
   const cursor = textarea.selectionStart ?? 0;
   const before = textarea.value.slice(0, cursor);
   const match = /@([A-Za-z0-9]*)$/.exec(before);
@@ -295,8 +296,12 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
   }, [placeAutocomplete]);
 
   const syncAutocomplete = useCallback(
-    (textarea: HTMLTextAreaElement) => {
+    (textarea?: HTMLTextAreaElement | null) => {
       if (tagItems.length === 0) {
+        setAcOpen(false);
+        return;
+      }
+      if (!textarea) {
         setAcOpen(false);
         return;
       }
@@ -396,21 +401,23 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
 
   const handleChange = useCallback(
     (e: ChangeEvent<HTMLTextAreaElement>) => {
+      const textarea = e.currentTarget;
       onChange(e.target.value);
-      syncAutocomplete(e.currentTarget);
-      requestAnimationFrame(() => syncAutocomplete(e.currentTarget));
+      syncAutocomplete(textarea);
+      requestAnimationFrame(() => syncAutocomplete(textarea));
     },
     [onChange, syncAutocomplete]
   );
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      const textarea = e.currentTarget;
       if (e.key === "@" && !acOpen) {
-        requestAnimationFrame(() => syncAutocomplete(e.currentTarget));
+        requestAnimationFrame(() => syncAutocomplete(textarea));
         return;
       }
       if (!acOpen && (e.key === "Tab" || e.key === "Enter")) {
-        const mention = getMentionState(e.currentTarget);
+        const mention = getMentionState(textarea);
         if (!mention) return;
         const firstMatch = tagItems.find((item) =>
           itemMatchesQuery(item, mention.query)

@@ -5379,7 +5379,16 @@ html:not(.dark) .keyframe-slot-label {
 }
 
 .reference-attached-slot {
+  order: 0;
   border-style: solid !important;
+}
+
+.reference-file-slot {
+  order: -2;
+}
+
+.reference-external-slot {
+  order: -1;
 }
 
 .reference-attached-slot img {
