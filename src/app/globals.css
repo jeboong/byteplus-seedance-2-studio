@@ -5678,11 +5678,12 @@ html:not(.dark) .model-settings-composer {
 }
 
 .composer-quick-popover {
-  transform-origin: bottom left;
+  transform-origin: bottom center;
+  max-width: calc(100vw - 2rem);
 }
 
 .composer-quick-panel {
-  width: min(92vw, 24rem);
+  width: 100%;
 }
 
 html.dark .composer-action-chip {

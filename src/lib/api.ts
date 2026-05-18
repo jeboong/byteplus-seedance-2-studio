@@ -278,8 +278,7 @@ export async function reportUsageOnce(
   usage?: {
     completion_tokens?: number;
     total_tokens?: number;
-  },
-  options?: { target?: "production" | "test" }
+  }
 ) {
   const totalTokens = usage?.total_tokens;
   if (
@@ -300,7 +299,6 @@ export async function reportUsageOnce(
         task_id: taskId,
         total_tokens: totalTokens,
         completion_tokens: usage?.completion_tokens,
-        target: options?.target ?? "test",
         timestamp: Date.now(),
       }),
     });

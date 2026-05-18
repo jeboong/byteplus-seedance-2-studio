@@ -156,6 +156,10 @@ const BYTEPLUS_MODE_CYCLE: ModelParamsType["mode"][] = [
   "first_last_frame",
 ];
 type QuickPanel = "ratio" | "resolution" | "duration";
+type QuickPanelPlacement = { left: number; width: number };
+
+const QUICK_PANEL_MAX_WIDTH = 384;
+const QUICK_PANEL_EDGE_GUTTER = 8;
 const RESOLUTION_OPTIONS = ["480p", "720p", "1080p"] as const;
 
 function RatioPreview({ ratio }: { ratio: AspectRatio }) {
@@ -252,6 +256,8 @@ export default function GenerateView() {
   const [activeQuickPanel, setActiveQuickPanel] = useState<QuickPanel | null>(
     null
   );
+  const [quickPanelPlacement, setQuickPanelPlacement] =
+    useState<QuickPanelPlacement | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmCountdown, setConfirmCountdown] = useState(
     GENERATION_CONFIRM_COUNTDOWN_SECONDS
@@ -289,6 +295,7 @@ export default function GenerateView() {
   const composerRef = useRef<HTMLDivElement>(null);
   const paramsPopoverRef = useRef<HTMLDivElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const quickPanelAnchorRef = useRef<HTMLButtonElement | null>(null);
   const quickPanelCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
@@ -1274,6 +1281,79 @@ export default function GenerateView() {
     setPromptExpanded(true);
   }, [isAlibaba, params.generateAudio, setParams]);
 
+  const updateQuickPanelPlacement = useCallback(
+    (anchor?: HTMLButtonElement | null) => {
+      const nextAnchor = anchor ?? quickPanelAnchorRef.current;
+      const host = composerRef.current;
+
+      if (!nextAnchor || !host || typeof window === "undefined") {
+        setQuickPanelPlacement(null);
+        return;
+      }
+
+      quickPanelAnchorRef.current = nextAnchor;
+
+      const hostRect = host.getBoundingClientRect();
+      const anchorRect = nextAnchor.getBoundingClientRect();
+      const hostWidth = Math.max(
+        hostRect.width - QUICK_PANEL_EDGE_GUTTER * 2,
+        0
+      );
+      const viewportWidth = Math.max(window.innerWidth - 32, 0);
+      const width = Math.min(
+        QUICK_PANEL_MAX_WIDTH,
+        viewportWidth,
+        hostWidth || QUICK_PANEL_MAX_WIDTH
+      );
+      const anchorCenter =
+        anchorRect.left - hostRect.left + anchorRect.width / 2;
+      const minLeft = QUICK_PANEL_EDGE_GUTTER;
+      const maxLeft = Math.max(
+        minLeft,
+        hostRect.width - width - QUICK_PANEL_EDGE_GUTTER
+      );
+      const left = Math.min(
+        Math.max(anchorCenter - width / 2, minLeft),
+        maxLeft
+      );
+
+      setQuickPanelPlacement({
+        left: Math.round(left),
+        width: Math.round(width),
+      });
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!activeQuickPanel) {
+      quickPanelAnchorRef.current = null;
+      setQuickPanelPlacement(null);
+      return;
+    }
+
+    updateQuickPanelPlacement();
+  }, [
+    activeQuickPanel,
+    composerOffset.x,
+    composerOffset.y,
+    composerSize.promptHeight,
+    composerSize.width,
+    isExpanded,
+    updateQuickPanelPlacement,
+  ]);
+
+  useEffect(() => {
+    if (!activeQuickPanel) return;
+    const refreshQuickPanelPlacement = () => updateQuickPanelPlacement();
+    window.addEventListener("resize", refreshQuickPanelPlacement);
+    window.addEventListener("scroll", refreshQuickPanelPlacement, true);
+    return () => {
+      window.removeEventListener("resize", refreshQuickPanelPlacement);
+      window.removeEventListener("scroll", refreshQuickPanelPlacement, true);
+    };
+  }, [activeQuickPanel, updateQuickPanelPlacement]);
+
   const cancelQuickPanelClose = useCallback(() => {
     if (!quickPanelCloseTimerRef.current) return;
     clearTimeout(quickPanelCloseTimerRef.current);
@@ -1291,34 +1371,56 @@ export default function GenerateView() {
   }, []);
 
   const openQuickPanel = useCallback(
-    (panel: QuickPanel) => {
+    (panel: QuickPanel, anchor?: HTMLButtonElement | null) => {
       if (!isExpanded) return;
       cancelQuickPanelClose();
       setParamsOpen(false);
+      updateQuickPanelPlacement(anchor);
       setActiveQuickPanel(panel);
     },
-    [cancelQuickPanelClose, isExpanded]
+    [cancelQuickPanelClose, isExpanded, updateQuickPanelPlacement]
   );
 
-  const handleRatioQuickClick = useCallback(() => {
-    if (activeQuickPanel === "ratio") {
-      cycleAspectRatio();
-      return;
-    }
-    openQuickPanel("ratio");
-  }, [activeQuickPanel, cycleAspectRatio, openQuickPanel]);
+  const handleRatioQuickClick = useCallback(
+    (anchor?: HTMLButtonElement | null) => {
+      if (activeQuickPanel === "ratio") {
+        updateQuickPanelPlacement(anchor);
+        cycleAspectRatio();
+        return;
+      }
+      openQuickPanel("ratio", anchor);
+    },
+    [
+      activeQuickPanel,
+      cycleAspectRatio,
+      openQuickPanel,
+      updateQuickPanelPlacement,
+    ]
+  );
 
-  const handleResolutionQuickClick = useCallback(() => {
-    if (activeQuickPanel === "resolution") {
-      cycleResolution();
-      return;
-    }
-    openQuickPanel("resolution");
-  }, [activeQuickPanel, cycleResolution, openQuickPanel]);
+  const handleResolutionQuickClick = useCallback(
+    (anchor?: HTMLButtonElement | null) => {
+      if (activeQuickPanel === "resolution") {
+        updateQuickPanelPlacement(anchor);
+        cycleResolution();
+        return;
+      }
+      openQuickPanel("resolution", anchor);
+    },
+    [
+      activeQuickPanel,
+      cycleResolution,
+      openQuickPanel,
+      updateQuickPanelPlacement,
+    ]
+  );
 
-  const handleDurationQuickClick = useCallback(() => {
-    openQuickPanel("duration");
-  }, [openQuickPanel]);
+  const handleDurationQuickClick = useCallback(
+    (anchor?: HTMLButtonElement | null) => {
+      openQuickPanel("duration", anchor);
+    },
+    [openQuickPanel]
+  );
 
   const handleExternalReferenceSubmit = useCallback(() => {
     const value = externalReferenceValue.trim();
@@ -1626,9 +1728,6 @@ export default function GenerateView() {
               singleParams.ratio === "adaptive" ? "16:9" : singleParams.ratio,
             actualResolution: singleParams.resolution,
             usage: demoUsage,
-          });
-          void reportUsageOnce(`demo-${localId}`, demoUsage, {
-            target: "test",
           });
         }, DEMO_PENDING_MS + DEMO_GENERATING_MS);
       });
@@ -2281,10 +2380,16 @@ export default function GenerateView() {
                         )}
                         <button
                           type="button"
-                          onMouseEnter={() => openQuickPanel("ratio")}
+                          onMouseEnter={(event) =>
+                            openQuickPanel("ratio", event.currentTarget)
+                          }
                           onMouseLeave={scheduleQuickPanelClose}
-                          onFocus={() => openQuickPanel("ratio")}
-                          onClick={handleRatioQuickClick}
+                          onFocus={(event) =>
+                            openQuickPanel("ratio", event.currentTarget)
+                          }
+                          onClick={(event) =>
+                            handleRatioQuickClick(event.currentTarget)
+                          }
                           disabled={!canAdjustRatio}
                           data-no-composer-drag
                           aria-pressed={activeQuickPanel === "ratio"}
@@ -2303,10 +2408,16 @@ export default function GenerateView() {
                         </button>
                         <button
                           type="button"
-                          onMouseEnter={() => openQuickPanel("resolution")}
+                          onMouseEnter={(event) =>
+                            openQuickPanel("resolution", event.currentTarget)
+                          }
                           onMouseLeave={scheduleQuickPanelClose}
-                          onFocus={() => openQuickPanel("resolution")}
-                          onClick={handleResolutionQuickClick}
+                          onFocus={(event) =>
+                            openQuickPanel("resolution", event.currentTarget)
+                          }
+                          onClick={(event) =>
+                            handleResolutionQuickClick(event.currentTarget)
+                          }
                           data-no-composer-drag
                           aria-pressed={activeQuickPanel === "resolution"}
                           className={`composer-action-chip composer-resolution-chip ${
@@ -2320,10 +2431,16 @@ export default function GenerateView() {
                         </button>
                         <button
                           type="button"
-                          onMouseEnter={() => openQuickPanel("duration")}
+                          onMouseEnter={(event) =>
+                            openQuickPanel("duration", event.currentTarget)
+                          }
                           onMouseLeave={scheduleQuickPanelClose}
-                          onFocus={() => openQuickPanel("duration")}
-                          onClick={handleDurationQuickClick}
+                          onFocus={(event) =>
+                            openQuickPanel("duration", event.currentTarget)
+                          }
+                          onClick={(event) =>
+                            handleDurationQuickClick(event.currentTarget)
+                          }
                           data-no-composer-drag
                           aria-pressed={activeQuickPanel === "duration"}
                           className={`composer-action-chip composer-duration-chip ${
@@ -2397,7 +2514,15 @@ export default function GenerateView() {
               {activeQuickPanel && isExpanded && (
                 <div
                   className="composer-settings-popover composer-quick-popover pointer-events-auto absolute left-0 z-50"
-                  style={{ bottom: "3.55rem" }}
+                  style={{
+                    bottom: "3.55rem",
+                    left: quickPanelPlacement
+                      ? `${quickPanelPlacement.left}px`
+                      : `${QUICK_PANEL_EDGE_GUTTER}px`,
+                    width: quickPanelPlacement
+                      ? `${quickPanelPlacement.width}px`
+                      : "min(calc(100% - 1rem), 24rem)",
+                  }}
                   data-no-composer-drag
                   onMouseEnter={cancelQuickPanelClose}
                   onMouseLeave={scheduleQuickPanelClose}

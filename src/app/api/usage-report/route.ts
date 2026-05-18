@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const PRODUCTION_TRACKER_URL =
+const TRACKER_URL =
   "https://script.google.com/macros/s/AKfycbyC53V4K-CHJnP86qIbBP0WmXZ4cDD9D3CFVmd8otL4ZThzpQ7RKhnCeIXgDu4y7CFrnQ/exec";
-const TEST_TRACKER_URL =
-  "https://script.google.com/macros/s/AKfycbz7UZ2gqVFHoB9Dzjo57yzGP0g1gRhk7y8tvZVZJnpSDKGwkvgjgZlDzVeX0zhzdgdO/exec";
 const DEFAULT_TEAM = "6팀";
 const DEFAULT_SOURCE = "external";
 const MAX_REPORTED_TASKS = 5000;
@@ -60,11 +58,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, skipped: true });
   }
 
-  const trackerTarget = body.target === "test" ? "test" : "production";
-  const trackerUrl =
-    trackerTarget === "test"
-      ? process.env.USAGE_TRACKER_TEST_URL || TEST_TRACKER_URL
-      : process.env.USAGE_TRACKER_URL || PRODUCTION_TRACKER_URL;
   const payload: Record<string, unknown> = {
     team: process.env.USAGE_TRACKER_TEAM || DEFAULT_TEAM,
     task_id: taskId,
@@ -85,7 +78,7 @@ export async function POST(req: NextRequest) {
   rememberReportedTask(taskId);
 
   try {
-    const res = await fetch(trackerUrl, {
+    const res = await fetch(TRACKER_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
