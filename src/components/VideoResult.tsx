@@ -365,14 +365,11 @@ function GenerationState({
 
 function InlineTaskDetails({
   task,
-  onOpenAttachment,
 }: {
   task: GenerationTask;
-  onOpenAttachment?: (asset: ReferenceAsset) => void;
 }) {
   const [promptCopied, setPromptCopied] = useState(false);
   const taskModel = getModelOption(task.params.modelId);
-  const tags = task.references ? getRefTags(task.references) : {};
   const actualDuration =
     task.actualDuration ??
     (task.params.durationType === "seconds" ? task.params.duration : null);
@@ -450,22 +447,6 @@ function InlineTaskDetails({
           )}
         </dl>
       </section>
-
-      {task.references && task.references.length > 0 && (
-        <section className="task-inline-block task-inline-refs">
-          <div className="task-inline-label">References</div>
-          <div className="task-inline-ref-row">
-            {task.references.map((ref) => (
-              <ReferenceThumb
-                key={ref.id}
-                asset={ref}
-                tag={tags[ref.id]}
-                onOpen={onOpenAttachment}
-              />
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 }
@@ -977,7 +958,7 @@ function TaskCard({
         </div>
       </div>
       {expanded && !compact && (
-        <InlineTaskDetails task={task} onOpenAttachment={setPreviewAsset} />
+        <InlineTaskDetails task={task} />
       )}
       {previewAsset && (
         <AttachmentPreviewOverlay
@@ -1202,7 +1183,7 @@ export default function VideoResult() {
                 title="기록 전체 삭제"
                 aria-label="기록 전체 삭제"
               >
-                {deleteAllConfirm ? "한번 더" : "전체삭제"}
+                {deleteAllConfirm ? "확인" : "전체삭제"}
               </button>
             </>
           ) : (
