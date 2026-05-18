@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useCallback, useState, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   ImagePlus,
   Film,
@@ -105,7 +106,7 @@ function AssetCard({
       }}
       onDrop={(e) => onDrop?.(asset.id, e)}
       onDragEnd={onDragEnd}
-      className={`group relative bg-gray-50 rounded-lg border overflow-hidden transition-all duration-150 ${
+      className={`group relative glass-control rounded-lg border overflow-hidden transition-all duration-150 ${
         uploading ? "" : "cursor-grab active:cursor-grabbing"
       } ${
         dragging
@@ -217,7 +218,7 @@ function FirstLastFrameUpload() {
   return (
     <div className="flex items-center gap-2">
       <div
-        className="flex-1 border border-dashed border-gray-300 rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 hover:bg-primary-50/30 transition-all min-h-[80px]"
+        className="glass-control flex-1 border border-dashed border-white/60 rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 hover:bg-primary-50/30 transition-all min-h-[80px]"
         onClick={() => firstRef.current?.click()}
       >
         {firstFrame?.preview ? (
@@ -245,14 +246,14 @@ function FirstLastFrameUpload() {
 
       <button
         onClick={swapFrames}
-        className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors shrink-0"
+        className="glass-chip p-2 rounded-lg text-gray-400 hover:text-gray-600 transition-colors shrink-0"
         title="Swap frames"
       >
         <ArrowLeftRight className="w-4 h-4" />
       </button>
 
       <div
-        className="flex-1 border border-dashed border-gray-300 rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 hover:bg-primary-50/30 transition-all min-h-[80px]"
+        className="glass-control flex-1 border border-dashed border-white/60 rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 hover:bg-primary-50/30 transition-all min-h-[80px]"
         onClick={() => lastRef.current?.click()}
       >
         {lastFrame?.preview ? (
@@ -458,14 +459,14 @@ function AssetManagerDialog({
     onClose();
   };
 
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <>
-      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/35 backdrop-blur-sm z-40" onClick={onClose} />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto"
+          className="glass-panel rounded-2xl subtle-glow w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between mb-4">
@@ -473,17 +474,17 @@ function AssetManagerDialog({
               <Library className="w-4 h-4 text-green-500" />
               Asset Library
             </h3>
-            <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg">
+            <button onClick={onClose} className="glass-chip p-1 rounded-lg">
               <X className="w-4 h-4 text-gray-400" />
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-1 bg-gray-100 rounded-xl p-1 mb-4">
+          <div className="param-segmented grid grid-cols-2 gap-1 rounded-xl p-1 mb-4">
             <button
               onClick={() => setTab("upload")}
               className={`py-2 rounded-lg text-xs font-medium transition-all ${
                 tab === "upload"
-                  ? "bg-white text-gray-800 shadow-sm"
+                  ? "param-choice-selected text-gray-800"
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
@@ -494,7 +495,7 @@ function AssetManagerDialog({
               onClick={() => setTab("manual")}
               className={`py-2 rounded-lg text-xs font-medium transition-all ${
                 tab === "manual"
-                  ? "bg-white text-gray-800 shadow-sm"
+                  ? "param-choice-selected text-gray-800"
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
@@ -527,7 +528,7 @@ function AssetManagerDialog({
                   <select
                     value={selectedGroup}
                     onChange={(e) => setSelectedGroup(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                    className="glass-control w-full px-3 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
                   >
                     {groups.map((g) => (
                       <option key={g.Id} value={g.Id}>
@@ -551,13 +552,13 @@ function AssetManagerDialog({
                     value={newGroupName}
                     onChange={(e) => setNewGroupName(e.target.value)}
                     placeholder="새 그룹 이름"
-                    className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                    className="glass-control flex-1 px-3 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
                     onKeyDown={(e) => e.key === "Enter" && handleCreateGroup()}
                   />
                   <button
                     onClick={handleCreateGroup}
                     disabled={!newGroupName.trim() || groupLoading}
-                    className="px-3 py-2 text-xs font-medium bg-green-500 text-white rounded-xl hover:bg-green-600 disabled:bg-gray-200 disabled:text-gray-400 transition-colors flex items-center gap-1"
+                    className="primary-button px-3 py-2 text-xs font-medium text-white rounded-xl disabled:bg-gray-200 disabled:text-gray-400 transition-all flex items-center gap-1"
                   >
                     <FolderPlus className="w-3.5 h-3.5" />
                     생성
@@ -584,7 +585,7 @@ function AssetManagerDialog({
                 )}
               </div>
 
-              <hr className="border-gray-100" />
+              <hr className="border-white/50" />
 
               {/* Upload source */}
               <div>
@@ -593,7 +594,7 @@ function AssetManagerDialog({
                 </label>
                 <div className="space-y-2">
                   <div
-                    className="border border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer hover:border-green-400 hover:bg-green-50/30 transition-all"
+                    className="glass-control border border-dashed border-white/60 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer hover:border-green-400 hover:bg-green-50/30 transition-all"
                     onClick={() => fileRef.current?.click()}
                   >
                     {uploadFile ? (
@@ -650,7 +651,7 @@ function AssetManagerDialog({
                       if (e.target.value) setUploadFile(null);
                     }}
                     placeholder="공개 URL (https://...)"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                    className="glass-control w-full px-3 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
                   />
                 </div>
               </div>
@@ -658,14 +659,14 @@ function AssetManagerDialog({
               {/* Asset type */}
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">에셋 타입</label>
-                <div className="grid grid-cols-3 gap-1 bg-gray-100 rounded-xl p-1">
+                <div className="param-segmented grid grid-cols-3 gap-1 rounded-xl p-1">
                   {(["image", "video", "audio"] as const).map((t) => (
                     <button
                       key={t}
                       onClick={() => setAssetType(t)}
                       className={`py-1.5 rounded-lg text-xs font-medium transition-all ${
                         assetType === t
-                          ? "bg-white text-gray-800 shadow-sm"
+                          ? "param-choice-selected text-gray-800"
                           : "text-gray-500 hover:text-gray-700"
                       }`}
                     >
@@ -683,7 +684,7 @@ function AssetManagerDialog({
                   !selectedGroup ||
                   (!uploadFile && !uploadUrl.trim())
                 }
-                className="w-full py-2.5 text-sm font-medium bg-green-500 text-white rounded-xl hover:bg-green-600 disabled:bg-gray-200 disabled:text-gray-400 transition-colors flex items-center justify-center gap-2"
+                className="primary-button w-full py-2.5 text-sm font-medium text-white rounded-xl disabled:bg-gray-200 disabled:text-gray-400 transition-all flex items-center justify-center gap-2"
               >
                 {uploading ? (
                   <>
@@ -706,7 +707,7 @@ function AssetManagerDialog({
               )}
 
               {uploadResult && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-xl space-y-2">
+                <div className="glass-control p-3 border border-green-200 rounded-xl space-y-2">
                   <div className="flex items-center gap-1.5 text-xs text-green-700 font-medium">
                     <CheckCircle2 className="w-4 h-4" />
                     Asset 등록 완료!
@@ -716,7 +717,7 @@ function AssetManagerDialog({
                   </div>
                   <button
                     onClick={handleUseAsset}
-                    className="w-full py-2 text-xs font-medium bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                    className="primary-button w-full py-2 text-xs font-medium text-white rounded-lg transition-all"
                   >
                     이 Asset을 레퍼런스로 사용
                   </button>
@@ -744,20 +745,20 @@ function AssetManagerDialog({
                   value={uri}
                   onChange={(e) => setUri(e.target.value)}
                   placeholder="asset://asset-20260410114236-8cdfz"
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent"
+                  className="glass-control w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">에셋 타입</label>
-                <div className="grid grid-cols-3 gap-1 bg-gray-100 rounded-xl p-1">
+                <div className="param-segmented grid grid-cols-3 gap-1 rounded-xl p-1">
                   {(["image", "video", "audio"] as const).map((t) => (
                     <button
                       key={t}
                       onClick={() => setAssetType(t)}
                       className={`py-1.5 rounded-lg text-xs font-medium transition-all ${
                         assetType === t
-                          ? "bg-white text-gray-800 shadow-sm"
+                          ? "param-choice-selected text-gray-800"
                           : "text-gray-500 hover:text-gray-700"
                       }`}
                     >
@@ -799,7 +800,8 @@ function AssetManagerDialog({
           )}
         </div>
       </div>
-    </>
+    </>,
+    document.body
   );
 }
 
@@ -813,6 +815,9 @@ function ReferenceMode() {
   } = useAppStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [assetDialogOpen, setAssetDialogOpen] = useState(false);
+  const [urlDialogOpen, setUrlDialogOpen] = useState(false);
+  const [urlInput, setUrlInput] = useState("");
+  const [urlError, setUrlError] = useState("");
   const [draggedRefId, setDraggedRefId] = useState<string | null>(null);
   const [dragOverRefId, setDragOverRefId] = useState<string | null>(null);
   const { upload, error: uploadError, clearError } = useFileUpload();
@@ -823,21 +828,24 @@ function ReferenceMode() {
   const happyHorseMode = currentModel.happyHorseMode;
   const allowAttachments = !isAlibaba || happyHorseMode !== "t2v";
 
-  const handleUrlAdd = useCallback(() => {
-    const url = window.prompt(
-      isAlibaba
-        ? "HappyHorse에 사용할 이미지 URL을 입력하세요:\n\n지원: JPEG/JPG/PNG/BMP/WEBP · HTTP(S) 또는 oss:// URL\nI2V: 정확히 1개 · R2V: 1~9개"
-        : "이미지/비디오/오디오의 공개 URL을 입력하세요:\n\n예시:\n• 이미지: https://example.com/photo.jpg\n• 비디오: https://example.com/clip.mp4\n• 오디오: https://example.com/sound.mp3\n• Asset: asset://asset-20260410114236-xxxxx"
-    );
-    if (!url) return;
+  const openUrlDialog = useCallback(() => {
+    setUrlInput("");
+    setUrlError("");
+    setUrlDialogOpen(true);
+  }, []);
 
-    const trimmed = url.trim();
+  const handleUrlAdd = useCallback(() => {
+    const trimmed = urlInput.trim();
+    if (!trimmed) {
+      setUrlError("URL을 입력해주세요.");
+      return;
+    }
     if (isAlibaba && !isAlibabaMediaUrl(trimmed)) {
-      window.alert("HappyHorse는 HTTP(S) 또는 ModelStudio 임시 oss:// 이미지 URL만 지원합니다.");
+      setUrlError("HappyHorse는 HTTP(S) 또는 oss:// 이미지 URL만 지원합니다.");
       return;
     }
     if (isAlibaba && happyHorseMode === "r2v" && references.length >= 9) {
-      window.alert("HappyHorse R2V는 레퍼런스 이미지 최대 9개까지 지원합니다.");
+      setUrlError("HappyHorse R2V는 이미지 최대 9개까지 지원합니다.");
       return;
     }
     if (isAlibaba && happyHorseMode === "i2v") {
@@ -861,12 +869,16 @@ function ReferenceMode() {
       role,
       preview: type === "image" && !trimmed.startsWith("asset://") ? trimmed : undefined,
     });
+    setUrlInput("");
+    setUrlError("");
+    setUrlDialogOpen(false);
   }, [
     addReference,
     happyHorseMode,
     isAlibaba,
     references,
     removeReference,
+    urlInput,
   ]);
 
   const handleAssetUriSubmit = useCallback(
@@ -948,7 +960,7 @@ function ReferenceMode() {
                   : references.filter((r) => r.type === "image").length >= 9
                 : references.length >= 12
             }
-            className="w-16 h-16 border border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 hover:bg-primary-50/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+            className="glass-control w-16 h-16 border border-dashed border-white/60 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 hover:bg-primary-50/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
             title={
               isAlibaba
                 ? "HappyHorse 로컬 이미지 첨부 (JPEG/JPG/PNG/BMP/WEBP, 10MB 이하)"
@@ -961,8 +973,8 @@ function ReferenceMode() {
         )}
         {allowAttachments && (
           <button
-            onClick={handleUrlAdd}
-            className="w-16 h-16 border border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 hover:bg-primary-50/30 transition-all shrink-0"
+            onClick={openUrlDialog}
+            className="glass-control w-16 h-16 border border-dashed border-white/60 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 hover:bg-primary-50/30 transition-all shrink-0"
             title={
               isAlibaba
                 ? "HTTP(S) 또는 oss:// 이미지 URL 입력"
@@ -976,7 +988,7 @@ function ReferenceMode() {
         {!isAlibaba && (
           <button
             onClick={() => setAssetDialogOpen(true)}
-            className="w-16 h-16 border border-dashed border-green-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-green-400 hover:bg-green-50/50 transition-all shrink-0"
+            className="glass-control w-16 h-16 border border-dashed border-green-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-green-400 hover:bg-green-50/50 transition-all shrink-0"
             title="실사 인물 Asset URI 입력 (콘솔에서 등록한 asset://)"
           >
             <UserCheck className="w-4 h-4 text-green-500" />
@@ -1020,6 +1032,86 @@ function ReferenceMode() {
         onClose={() => setAssetDialogOpen(false)}
         onSubmit={handleAssetUriSubmit}
       />
+
+      {urlDialogOpen &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <>
+          <div
+            className="fixed inset-0 z-40 bg-black/35 backdrop-blur-sm"
+            onClick={() => setUrlDialogOpen(false)}
+          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <form
+              className="glass-panel subtle-glow w-full max-w-md rounded-2xl p-5"
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleUrlAdd();
+              }}
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                    <Link2 className="h-4 w-4 text-primary-500" />
+                    URL 첨부
+                  </h3>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {isAlibaba
+                      ? "HTTP(S) 또는 oss:// 이미지 URL"
+                      : "이미지, 비디오, 오디오, asset:// URI"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setUrlDialogOpen(false)}
+                  className="glass-chip rounded-lg p-1.5 text-gray-400 hover:text-gray-700"
+                  title="닫기"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <input
+                value={urlInput}
+                onChange={(e) => {
+                  setUrlInput(e.target.value);
+                  setUrlError("");
+                }}
+                autoFocus
+                placeholder={
+                  isAlibaba
+                    ? "https://... 또는 oss://..."
+                    : "https://example.com/file.mp4"
+                }
+                className="glass-control w-full rounded-xl border px-3 py-3 text-sm outline-none transition-all placeholder:text-gray-400 focus:ring-2 focus:ring-primary-400"
+              />
+
+              {urlError && (
+                <p className="mt-3 rounded-lg border border-red-200 bg-red-50/70 px-3 py-2 text-xs text-red-600">
+                  {urlError}
+                </p>
+              )}
+
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setUrlDialogOpen(false)}
+                  className="glass-chip rounded-lg px-3 py-2 text-xs font-medium text-gray-500 hover:text-gray-700"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  className="primary-button rounded-lg px-4 py-2 text-xs font-semibold text-white transition-all"
+                >
+                  추가
+                </button>
+              </div>
+            </form>
+          </div>
+          </>,
+          document.body
+        )}
     </div>
   );
 }
@@ -1063,7 +1155,7 @@ export default function ReferenceUpload() {
       </div>
 
       {isAlibaba && helpOpen && (
-        <div className="p-2 bg-gray-50 border border-gray-200 rounded-lg text-[11px] text-gray-500 leading-relaxed">
+        <div className="glass-control p-2 border rounded-lg text-[11px] text-gray-500 leading-relaxed">
           {currentModel.happyHorseMode === "t2v"
             ? "Text-to-video는 첨부 없이 프롬프트만 사용합니다."
             : currentModel.happyHorseMode === "i2v"

@@ -10,6 +10,7 @@ import {
   useImperativeHandle,
   type ChangeEvent,
   type ClipboardEvent,
+  type CSSProperties,
   type KeyboardEvent,
 } from "react";
 import { createPortal } from "react-dom";
@@ -93,6 +94,7 @@ interface Props {
   rows?: number;
   placeholder?: string;
   className?: string;
+  style?: CSSProperties;
 }
 
 const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor(
@@ -105,6 +107,7 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
     rows = 2,
     placeholder,
     className = "",
+    style,
   },
   outerRef
 ) {
@@ -299,7 +302,8 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
 
   return (
     <div
-      className={`prompt-editor-shell relative bg-surface-50 border border-gray-200 rounded-xl text-sm leading-relaxed text-gray-700 focus-within:ring-2 focus-within:ring-primary-400 focus-within:border-transparent transition-all ${className}`}
+      className={`prompt-editor-shell relative border rounded-xl text-sm leading-relaxed text-gray-700 focus-within:ring-2 focus-within:ring-primary-400 focus-within:border-transparent transition-all ${className}`}
+      style={style}
     >
       <textarea
         ref={textareaRef}
@@ -325,7 +329,7 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
         filtered.length > 0 &&
         createPortal(
           <div
-            className="mention-popover fixed z-[1000] bg-white rounded-lg shadow-xl border border-gray-100 py-1 max-h-56 overflow-y-auto"
+            className="mention-popover fixed z-[1000] rounded-lg border py-1 max-h-56 overflow-y-auto"
             style={{
               left: acPos.left,
               top: acPos.top,

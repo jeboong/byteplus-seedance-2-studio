@@ -1,75 +1,124 @@
 "use client";
 
-import { Video, Settings, LogOut, ChevronDown } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  FlaskConical,
+  KeyRound,
+  LogOut,
+  RotateCcw,
+  Settings,
+} from "lucide-react";
 import { useAppStore } from "@/lib/store";
-import { getModelOption } from "@/lib/types";
 import ThemeToggle from "./ThemeToggle";
 
-export default function Header({
-  onToggleParams,
-  paramsOpen,
-}: {
-  onToggleParams: () => void;
-  paramsOpen: boolean;
-}) {
-  const { apiKey, alibabaApiKey, clearApiKey, params } = useAppStore();
-  const currentModel = getModelOption(params.modelId);
-  const activeKey =
-    currentModel.provider === "alibaba" ? alibabaApiKey : apiKey;
+function openOnboarding(stage: "intro" | "setup") {
+  window.dispatchEvent(
+    new CustomEvent("sd2:open-onboarding", { detail: { stage } })
+  );
+}
+
+export default function Header() {
+  const { apiKey, alibabaApiKey, clearApiKey, demoMode, setDemoMode } =
+    useAppStore();
+  const activeKey = apiKey || alibabaApiKey;
   const masked = activeKey ? `...${activeKey.slice(-6)}` : "";
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && menuRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", close, true);
+    return () => document.removeEventListener("pointerdown", close, true);
+  }, [open]);
+
+  const handleSignOut = () => {
+    clearApiKey();
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("sd2_browse_mode");
+      window.location.reload();
+    }
+  };
 
   return (
-    <header className="h-14 border-b border-gray-100 bg-white flex items-center justify-between px-5 shrink-0">
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2.5">
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary-500 text-white">
-            <Video className="w-4 h-4" />
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-semibold text-gray-800">
-              {currentModel.name}
-            </span>
-            <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
-              {currentModel.versionLabel}
-            </span>
-            <ChevronDown className="w-3 h-3 text-gray-400" />
-          </div>
-        </div>
+    <div className="floating-app-controls fixed right-4 top-4 z-50 flex items-center gap-2">
+      {masked && (
+        <span className="glass-chip hidden rounded-md px-2 py-1 font-mono text-[11px] text-gray-500 sm:inline-flex">
+          {masked}
+        </span>
+      )}
+      {demoMode && (
+        <span className="floating-status-badge glass-chip hidden h-9 items-center rounded-xl px-3 text-[11px] font-semibold text-amber-600 sm:inline-flex">
+          DEMO
+        </span>
+      )}
+      <div ref={menuRef} className="relative">
         <button
-          onClick={onToggleParams}
-          className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors"
-        >
-          <Settings className="w-3.5 h-3.5" />
-          Configure
-        </button>
-      </div>
-
-      <div className="flex items-center gap-3">
-        {masked && (
-          <span className="text-[11px] text-gray-400 font-mono bg-gray-50 px-2 py-1 rounded-md">
-            {masked}
-          </span>
-        )}
-        <button
-          onClick={onToggleParams}
-          className={`p-2 rounded-lg transition-colors ${
-            paramsOpen
-              ? "bg-primary-50 text-primary-600"
-              : "hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          aria-label="App settings"
+          aria-expanded={open}
+          className={`glass-chip p-2 rounded-lg transition-colors ${
+            open ? "text-primary-600" : "text-gray-400 hover:text-gray-600"
           }`}
-          title="Configure"
+          title="Settings"
         >
           <Settings className="w-4 h-4" />
         </button>
-        <ThemeToggle />
-        <button
-          onClick={clearApiKey}
-          className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-          title="Sign out"
-        >
-          <LogOut className="w-4 h-4" />
-        </button>
+        {open && (
+          <div className="app-settings-menu absolute right-0 top-[calc(100%+0.55rem)] w-64 overflow-hidden rounded-2xl border p-2">
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                openOnboarding("setup");
+              }}
+              className="app-settings-item"
+            >
+              <KeyRound className="h-4 w-4" />
+              <span>API key 변경</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                openOnboarding("intro");
+              }}
+              className="app-settings-item"
+            >
+              <RotateCcw className="h-4 w-4" />
+              <span>온보딩 다시 보기</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setDemoMode(!demoMode)}
+              aria-pressed={demoMode}
+              className="app-settings-item"
+            >
+              <FlaskConical className="h-4 w-4" />
+              <span className="flex-1 text-left">데모 모드</span>
+              <span
+                className={`app-settings-switch ${
+                  demoMode ? "app-settings-switch-on" : ""
+                }`}
+              />
+            </button>
+          </div>
+        )}
       </div>
-    </header>
+      <ThemeToggle />
+      <button
+        type="button"
+        onClick={handleSignOut}
+        className="glass-chip p-2 rounded-lg text-gray-400 hover:text-gray-600 transition-colors"
+        title="Sign out"
+      >
+        <LogOut className="w-4 h-4" />
+      </button>
+    </div>
   );
 }

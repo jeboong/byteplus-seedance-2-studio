@@ -1,24 +1,29 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import {
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  type CSSProperties,
+} from "react";
 import {
   Play,
-  Settings2,
   ChevronDown,
   ImagePlus,
   GripHorizontal,
+  Link2,
+  Plus,
+  X,
 } from "lucide-react";
 import { useAppStore, hydrateTasks } from "@/lib/store";
 import { createGenerationTask, getTaskStatus } from "@/lib/api";
 import {
-  MODELS,
   estimateCost,
   estimateTokens,
   getModelOption,
   isAlibabaModel,
-  minDurationForModel,
   supportsAspectRatio,
-  supportsSmartDuration,
   type ModelParams as ModelParamsType,
 } from "@/lib/types";
 import { useFileUpload } from "@/lib/useFileUpload";
@@ -26,7 +31,6 @@ import { PromptInsertProvider } from "@/lib/usePromptInsert";
 import Header from "./Header";
 import ModelParams from "./ModelParams";
 import PromptEditor, { type PromptEditorHandle } from "./PromptEditor";
-import ReferenceUpload from "./ReferenceUpload";
 import VideoResult from "./VideoResult";
 
 function readContentUrl(
@@ -52,39 +56,127 @@ function isHappyHorseMediaUrl(url: string): boolean {
   return /^(https?:\/\/|oss:\/\/)/i.test(url);
 }
 
+function detectExternalReference(
+  value: string
+): { type: "image" | "video" | "audio"; role: string } {
+  if (/\.(mp4|mov|webm)(\?|#|$)/i.test(value) || value.includes("video")) {
+    return { type: "video", role: "reference_video" };
+  }
+  if (/\.(mp3|wav|ogg|m4a)(\?|#|$)/i.test(value) || value.includes("audio")) {
+    return { type: "audio", role: "reference_audio" };
+  }
+  return { type: "image", role: "reference_image" };
+}
+
+type FrameRole = "first_frame" | "last_frame";
+
+const FRAME_SLOT_META: Record<FrameRole, { label: string; shortLabel: string }> = {
+  first_frame: { label: "START FRAME", shortLabel: "First" },
+  last_frame: { label: "END FRAME", shortLabel: "Last" },
+};
+
+const MAGNET_GRID = 64;
+
+function snapNumber(value: number, step = MAGNET_GRID): number {
+  return Math.round(value / step) * step;
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function GenerateView() {
   const {
     apiKey,
     alibabaApiKey,
+    demoMode,
     prompt,
     setPrompt,
     references,
     params,
     setParams,
+    addReference,
+    removeReference,
     addTask,
     updateTask,
+    clearDemoTasks,
   } = useAppStore();
   const [error, setError] = useState("");
-  const [paramsOpen, setParamsOpen] = useState(true);
-  const [modeDropdown, setModeDropdown] = useState(false);
+  const [paramsOpen, setParamsOpen] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isReferenceSlotOver, setIsReferenceSlotOver] = useState(false);
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [composerOffset, setComposerOffset] = useState({ x: 0, y: 0 });
+  const [composerSize, setComposerSize] = useState<{
+    width?: number;
+    promptHeight?: number;
+  }>({});
+  const [draggedFrameRole, setDraggedFrameRole] = useState<FrameRole | null>(
+    null
+  );
+  const [dragOverFrameRole, setDragOverFrameRole] = useState<FrameRole | null>(
+    null
+  );
   const [isComposerDragging, setIsComposerDragging] = useState(false);
+  const [isComposerResizing, setIsComposerResizing] = useState(false);
   const [isComposerSnapping, setIsComposerSnapping] = useState(false);
   const pollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const promptEditorRef = useRef<PromptEditorHandle>(null);
   const mainRef = useRef<HTMLDivElement>(null);
+  const resultsScrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
+  const firstFrameInputRef = useRef<HTMLInputElement>(null);
+  const lastFrameInputRef = useRef<HTMLInputElement>(null);
+  const referenceFileInputRef = useRef<HTMLInputElement>(null);
   const composerDragRef = useRef<{
     pointerId: number;
     startX: number;
     startY: number;
     startOffset: { x: number; y: number };
   } | null>(null);
+  const composerResizeRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startWidth: number;
+    startPromptHeight: number;
+    startOffset: { x: number; y: number };
+    lastSize: { width: number; promptHeight: number };
+  } | null>(null);
+  const framePointerDragRef = useRef<{
+    pointerId: number;
+    role: FrameRole;
+    startX: number;
+    startY: number;
+    active: boolean;
+  } | null>(null);
+  const suppressFrameClickRef = useRef(false);
   const dragCounter = useRef(0);
+  const [externalReferenceOpen, setExternalReferenceOpen] = useState(false);
+  const [externalReferenceValue, setExternalReferenceValue] = useState("");
+  const [externalReferenceError, setExternalReferenceError] = useState("");
 
   const isExpanded = promptExpanded || isDragOver;
+
+  useEffect(() => {
+    if (window.innerWidth < 900) {
+      setParamsOpen(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!paramsOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setParamsOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [paramsOpen]);
 
   const { upload: uploadFiles, error: dropError, clearError: clearDropError } =
     useFileUpload();
@@ -139,6 +231,31 @@ export default function GenerateView() {
       if (files?.length) {
         uploadFiles(files);
       }
+    },
+    [uploadFiles]
+  );
+
+  const handleReferenceSlotDrop = useCallback(
+    (event: React.DragEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      setIsReferenceSlotOver(false);
+
+      const files = event.dataTransfer.files;
+      if (files?.length) {
+        uploadFiles(files);
+      }
+    },
+    [uploadFiles]
+  );
+
+  const handleReferenceFileChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files;
+      if (files?.length) {
+        uploadFiles(files);
+        setExternalReferenceOpen(false);
+      }
+      event.target.value = "";
     },
     [uploadFiles]
   );
@@ -208,6 +325,9 @@ export default function GenerateView() {
         top = hostHeight - cardHeight - margin;
       }
 
+      left = snapNumber(left);
+      top = snapNumber(top);
+
       return clampComposerOffset({
         x: left - baseLeft,
         y: top - baseTop,
@@ -216,8 +336,29 @@ export default function GenerateView() {
     [clampComposerOffset]
   );
 
+  const clampComposerSize = useCallback(
+    (size: { width: number; promptHeight: number }) => {
+      const host = mainRef.current;
+      const hostWidth = host?.clientWidth ?? 960;
+      const hostHeight = host?.clientHeight ?? 720;
+      const availableWidth = Math.max(280, hostWidth - 48);
+      const minWidth = Math.min(360, availableWidth);
+      const maxWidth = Math.min(960, availableWidth);
+      const maxPromptHeight = Math.max(96, Math.min(420, hostHeight - 260));
+
+      return {
+        width: Math.min(maxWidth, Math.max(minWidth, size.width)),
+        promptHeight: Math.min(
+          maxPromptHeight,
+          Math.max(56, size.promptHeight)
+        ),
+      };
+    },
+    []
+  );
+
   const handleComposerPointerDown = useCallback(
-    (e: React.PointerEvent<HTMLButtonElement>) => {
+    (e: React.PointerEvent<HTMLElement>) => {
       if (e.button !== 0) return;
       e.preventDefault();
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -227,7 +368,6 @@ export default function GenerateView() {
         startY: e.clientY,
         startOffset: composerOffset,
       };
-      setPromptExpanded(true);
       setIsComposerDragging(true);
       setIsComposerSnapping(false);
     },
@@ -235,7 +375,7 @@ export default function GenerateView() {
   );
 
   const handleComposerPointerMove = useCallback(
-    (e: React.PointerEvent<HTMLButtonElement>) => {
+    (e: React.PointerEvent<HTMLElement>) => {
       const drag = composerDragRef.current;
       if (!drag || drag.pointerId !== e.pointerId) return;
       const next = clampComposerOffset({
@@ -248,7 +388,7 @@ export default function GenerateView() {
   );
 
   const finishComposerDrag = useCallback(
-    (e?: React.PointerEvent<HTMLButtonElement>) => {
+    (e?: React.PointerEvent<HTMLElement>) => {
       const drag = composerDragRef.current;
       if (!drag) return;
       const finalOffset = e
@@ -272,6 +412,293 @@ export default function GenerateView() {
     [clampComposerOffset, composerOffset, snapComposerOffset]
   );
 
+  const handleComposerSurfacePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0 || isComposerResizing) return;
+      const target = e.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (
+        target.closest(
+          'button, input, textarea, select, a, [role="button"], [data-no-composer-drag]'
+        )
+      ) {
+        return;
+      }
+      handleComposerPointerDown(e);
+    },
+    [handleComposerPointerDown, isComposerResizing]
+  );
+
+  const handleComposerClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest(
+          'button, input, textarea, select, a, [role="button"], [data-no-composer-drag]'
+        )
+      ) {
+        return;
+      }
+      setPromptExpanded(true);
+    },
+    []
+  );
+
+  const handleComposerResizePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (e.button !== 0) return;
+      const card = composerRef.current;
+      if (!card) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.currentTarget.setPointerCapture(e.pointerId);
+
+      const textarea = card.querySelector<HTMLTextAreaElement>(
+        ".prompt-editor-textarea"
+      );
+      const rect = card.getBoundingClientRect();
+      composerResizeRef.current = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        startWidth: composerSize.width ?? rect.width,
+        startPromptHeight:
+          composerSize.promptHeight ?? textarea?.offsetHeight ?? 156,
+        startOffset: composerOffset,
+        lastSize: {
+          width: composerSize.width ?? rect.width,
+          promptHeight:
+            composerSize.promptHeight ?? textarea?.offsetHeight ?? 156,
+        },
+      };
+      setPromptExpanded(true);
+      setIsComposerDragging(false);
+      setIsComposerResizing(true);
+      setIsComposerSnapping(false);
+    },
+    [composerOffset, composerSize.promptHeight, composerSize.width]
+  );
+
+  const handleComposerResizePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      const resize = composerResizeRef.current;
+      if (!resize || resize.pointerId !== e.pointerId) return;
+      const nextSize = clampComposerSize({
+        width: resize.startWidth - (e.clientX - resize.startX) * 2,
+        promptHeight:
+          resize.startPromptHeight + (e.clientY - resize.startY) * 2,
+      });
+      resize.lastSize = nextSize;
+      setComposerSize(nextSize);
+      setComposerOffset(
+        clampComposerOffset({
+          x: resize.startOffset.x,
+          y:
+            resize.startOffset.y +
+            (nextSize.promptHeight - resize.startPromptHeight) / 2,
+        })
+      );
+    },
+    [clampComposerOffset, clampComposerSize]
+  );
+
+  const finishComposerResize = useCallback(
+    (e?: React.PointerEvent<HTMLButtonElement>) => {
+      const resize = composerResizeRef.current;
+      if (!resize) return;
+      if (e) {
+        try {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        } catch {
+          /* pointer capture may already be gone */
+        }
+      }
+      const snappedSize = clampComposerSize({
+        width: snapNumber(resize.lastSize.width),
+        promptHeight: snapNumber(resize.lastSize.promptHeight),
+      });
+      composerResizeRef.current = null;
+      setIsComposerResizing(false);
+      setComposerSize(snappedSize);
+      requestAnimationFrame(() => {
+        setComposerOffset(
+          clampComposerOffset({
+            x: resize.startOffset.x,
+            y:
+              resize.startOffset.y +
+              (snappedSize.promptHeight - resize.startPromptHeight) / 2,
+          })
+        );
+      });
+    },
+    [clampComposerOffset, clampComposerSize]
+  );
+
+  const handleFrameUpload = useCallback(
+    async (file: File, role: FrameRole) => {
+      const existing = useAppStore
+        .getState()
+        .references.find((ref) => ref.role === role);
+      if (existing) removeReference(existing.id);
+
+      const url = await fileToDataUrl(file);
+      addReference({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        type: "image",
+        url,
+        name: file.name,
+        role,
+        preview: url,
+      });
+      setPromptExpanded(true);
+    },
+    [addReference, removeReference]
+  );
+
+  const openFramePicker = useCallback((role: FrameRole) => {
+    if (role === "first_frame") {
+      firstFrameInputRef.current?.click();
+    } else {
+      lastFrameInputRef.current?.click();
+    }
+  }, []);
+
+  const removeFrame = useCallback(
+    (role: FrameRole) => {
+      const existing = references.find((ref) => ref.role === role);
+      if (existing) removeReference(existing.id);
+    },
+    [references, removeReference]
+  );
+
+  const moveFrameContent = useCallback(
+    (sourceRole: FrameRole, targetRole: FrameRole) => {
+      if (sourceRole === targetRole) return;
+      useAppStore.setState((state) => {
+        const source = state.references.find((ref) => ref.role === sourceRole);
+        if (!source) return {};
+
+        const target = state.references.find((ref) => ref.role === targetRole);
+        return {
+          references: state.references.map((ref) => {
+            if (ref.id === source.id) return { ...ref, role: targetRole };
+            if (target && ref.id === target.id) {
+              return { ...ref, role: sourceRole };
+            }
+            return ref;
+          }),
+        };
+      });
+      setPromptExpanded(true);
+    },
+    []
+  );
+
+  const handleFrameSlotDrop = useCallback(
+    (targetRole: FrameRole, event: React.DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+
+      const file = event.dataTransfer.files?.[0];
+      if (file) {
+        void handleFrameUpload(file, targetRole);
+      } else {
+        const sourceRole = event.dataTransfer.getData(
+          "application/x-frame-role"
+        ) as FrameRole;
+        if (sourceRole === "first_frame" || sourceRole === "last_frame") {
+          moveFrameContent(sourceRole, targetRole);
+        }
+      }
+
+      setDraggedFrameRole(null);
+      setDragOverFrameRole(null);
+    },
+    [handleFrameUpload, moveFrameContent]
+  );
+
+  const handleFramePointerDown = useCallback(
+    (role: FrameRole, event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest("button")) return;
+      const hasFrame = useAppStore
+        .getState()
+        .references.some((ref) => ref.role === role);
+      if (!hasFrame) return;
+
+      framePointerDragRef.current = {
+        pointerId: event.pointerId,
+        role,
+        startX: event.clientX,
+        startY: event.clientY,
+        active: false,
+      };
+      suppressFrameClickRef.current = false;
+      event.currentTarget.setPointerCapture(event.pointerId);
+    },
+    []
+  );
+
+  const handleFramePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const drag = framePointerDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+
+      const distance = Math.hypot(
+        event.clientX - drag.startX,
+        event.clientY - drag.startY
+      );
+      if (distance > 8) {
+        drag.active = true;
+        suppressFrameClickRef.current = true;
+        setDraggedFrameRole(drag.role);
+      }
+
+      if (!drag.active) return;
+
+      const target = document
+        .elementFromPoint(event.clientX, event.clientY)
+        ?.closest<HTMLElement>("[data-frame-role]");
+      const role = target?.dataset.frameRole;
+      setDragOverFrameRole(
+        role === "first_frame" || role === "last_frame" ? role : null
+      );
+    },
+    []
+  );
+
+  const finishFramePointerDrag = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const drag = framePointerDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+
+      const target = document
+        .elementFromPoint(event.clientX, event.clientY)
+        ?.closest<HTMLElement>("[data-frame-role]");
+      const role = target?.dataset.frameRole;
+      if (
+        drag.active &&
+        (role === "first_frame" || role === "last_frame")
+      ) {
+        moveFrameContent(drag.role, role);
+      }
+
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        /* pointer capture may already be gone */
+      }
+      framePointerDragRef.current = null;
+      setDraggedFrameRole(null);
+      setDragOverFrameRole(null);
+      window.setTimeout(() => {
+        suppressFrameClickRef.current = false;
+      }, 0);
+    },
+    [moveFrameContent]
+  );
+
   useEffect(() => {
     const handleResize = () => {
       setComposerOffset((offset) => clampComposerOffset(offset));
@@ -281,7 +708,23 @@ export default function GenerateView() {
   }, [clampComposerOffset]);
 
   useEffect(() => {
-    if (!promptExpanded) return;
+    const resetLayout = () => {
+      setComposerOffset({ x: 0, y: 0 });
+      setComposerSize({});
+      setPromptExpanded(false);
+      setExternalReferenceOpen(false);
+      setParamsOpen(false);
+      setIsComposerDragging(false);
+      setIsComposerResizing(false);
+      setIsComposerSnapping(true);
+      window.setTimeout(() => setIsComposerSnapping(false), 420);
+    };
+    window.addEventListener("sd2:reset-layout", resetLayout);
+    return () => window.removeEventListener("sd2:reset-layout", resetLayout);
+  }, []);
+
+  useEffect(() => {
+    if (!promptExpanded && !externalReferenceOpen && !paramsOpen) return;
     const handleOutsidePointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (
@@ -291,12 +734,14 @@ export default function GenerateView() {
         return;
       }
       setPromptExpanded(false);
+      setExternalReferenceOpen(false);
+      setParamsOpen(false);
     };
     document.addEventListener("pointerdown", handleOutsidePointerDown, true);
     return () => {
       document.removeEventListener("pointerdown", handleOutsidePointerDown, true);
     };
-  }, [promptExpanded]);
+  }, [externalReferenceOpen, paramsOpen, promptExpanded]);
 
   const currentModel = getModelOption(params.modelId);
   const isAlibaba = isAlibabaModel(params.modelId);
@@ -314,18 +759,121 @@ export default function GenerateView() {
     : [];
   const happyHorseMode = currentModel.happyHorseMode;
   const uploadPending = references.some((r) => r.uploading);
-  const showReferences = isExpanded || references.length > 0 || uploadPending;
+  const isFirstLastMode = params.mode === "first_last_frame";
+  const showReferenceSlot =
+    !isFirstLastMode && (!isAlibaba || happyHorseMode !== "t2v");
+  const primaryReference =
+    references.find((ref) => ref.preview || ref.type === "image") ??
+    references[0];
+  const referencePreviewUrl =
+    primaryReference?.preview ??
+    (primaryReference?.type === "image" ? primaryReference.url : undefined);
+  const composerModeLabel = isAlibaba
+    ? currentModel.happyHorseMode === "t2v"
+      ? "Text-to-video"
+      : currentModel.happyHorseMode === "i2v"
+      ? "Image-to-video"
+      : "Reference-to-video"
+    : params.mode === "reference"
+    ? "Reference"
+    : "Keyframe";
+  const summaryModeLabel = isAlibaba
+    ? currentModel.happyHorseMode === "t2v"
+      ? "TEXT"
+      : currentModel.happyHorseMode === "i2v"
+      ? "IMAGE"
+      : "REFERENCE"
+    : params.mode === "first_last_frame"
+    ? "KEYFRAME"
+    : "REFERENCE";
+  const summaryModelLabel = isAlibaba ? "HappyHorse" : currentModel.name;
+  const summaryRatioLabel =
+    currentModel.happyHorseMode === "i2v"
+      ? "SOURCE"
+      : params.ratio === "adaptive"
+      ? "AUTO"
+      : params.ratio;
+  const composerSummary = [
+    summaryModeLabel,
+    "VIDEO",
+    summaryModelLabel,
+    summaryRatioLabel,
+  ].join(" · ");
+  const referenceFileAccept = isAlibaba
+    ? "image/jpeg,image/jpg,image/png,image/bmp,image/webp"
+    : "image/*,video/*,audio/*";
+  const referenceFileMultiple = !(isAlibaba && happyHorseMode === "i2v");
+
+  const handleExternalReferenceSubmit = useCallback(() => {
+    const value = externalReferenceValue.trim();
+    if (!value) {
+      setExternalReferenceError("URL 또는 asset:// 값을 입력하세요.");
+      return;
+    }
+    if (!/^(https?:\/\/|asset:\/\/|oss:\/\/)/i.test(value)) {
+      setExternalReferenceError("https://, oss://, asset:// 형식만 지원합니다.");
+      return;
+    }
+    if (isAlibaba && !isHappyHorseMediaUrl(value)) {
+      setExternalReferenceError("HappyHorse는 HTTP(S) 또는 oss:// 이미지 URL만 지원합니다.");
+      return;
+    }
+    if (isAlibaba && happyHorseMode === "r2v" && references.length >= 9) {
+      setExternalReferenceError("HappyHorse R2V는 이미지 최대 9개까지 지원합니다.");
+      return;
+    }
+    if (isAlibaba && happyHorseMode === "i2v") {
+      references.forEach((ref) => removeReference(ref.id));
+    }
+
+    const inferred = isAlibaba
+      ? {
+          type: "image" as const,
+          role: happyHorseMode === "i2v" ? "first_frame" : "reference_image",
+        }
+      : detectExternalReference(value);
+
+    addReference({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      type: inferred.type,
+      url: value,
+      name: value.startsWith("asset://")
+        ? value.replace("asset://", "")
+        : value.split("/").pop() || "external-reference",
+      role: inferred.role,
+      preview:
+        inferred.type === "image" && !value.startsWith("asset://")
+          ? value
+          : undefined,
+    });
+    setExternalReferenceValue("");
+    setExternalReferenceError("");
+    setExternalReferenceOpen(false);
+  }, [
+    addReference,
+    externalReferenceValue,
+    happyHorseMode,
+    isAlibaba,
+    references,
+    removeReference,
+  ]);
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => {
       setComposerOffset((offset) => clampComposerOffset(offset));
     });
     return () => cancelAnimationFrame(raf);
-  }, [clampComposerOffset, isExpanded, paramsOpen, showReferences]);
+  }, [clampComposerOffset, externalReferenceOpen, isExpanded, paramsOpen, showReferenceSlot]);
+
+  useEffect(() => {
+    if (!showReferenceSlot) {
+      setIsReferenceSlotOver(false);
+      setExternalReferenceOpen(false);
+    }
+  }, [showReferenceSlot]);
 
   const hasFirstFrame = references.some((r) => r.role === "first_frame");
   const hasLastFrame = references.some((r) => r.role === "last_frame");
-  const isFirstLastMode = params.mode === "first_last_frame";
   const lastOnlyError = isFirstLastMode && hasLastFrame && !hasFirstFrame;
   const noFramesError = isFirstLastMode && !hasFirstFrame && !hasLastFrame;
   const happyHorseI2vError =
@@ -342,7 +890,7 @@ export default function GenerateView() {
     !supportsAspectRatio(params.modelId, params.ratio);
   const promptRequired = happyHorseMode !== "i2v";
   const generateDisabled = uploadPending;
-  const generateIssue = !activeApiKey
+  const generateIssue = !demoMode && !activeApiKey
     ? isAlibaba
       ? "Alibaba ModelStudio API Key를 입력하세요."
       : "BytePlus Ark API Key를 입력하세요."
@@ -361,37 +909,6 @@ export default function GenerateView() {
     : happyHorseRatioError
     ? "HappyHorse는 16:9, 9:16, 1:1, 4:3, 3:4 비율만 지원합니다."
     : "";
-  const happyHorseModels = MODELS.filter((m) => m.provider === "alibaba");
-
-  const selectHappyHorseModel = useCallback(
-    (modelId: ModelParamsType["modelId"]) => {
-      setParams({
-        modelId,
-        resolution:
-          getModelOption(modelId).supports1080p === false &&
-          params.resolution === "1080p"
-            ? "720p"
-            : params.resolution,
-        ratio: supportsAspectRatio(modelId, params.ratio)
-          ? params.ratio
-          : "16:9",
-        durationType: supportsSmartDuration(modelId)
-          ? params.durationType
-          : "seconds",
-        duration: Math.max(params.duration, minDurationForModel(modelId)),
-        mode: "reference",
-      });
-      setModeDropdown(false);
-    },
-    [
-      params.duration,
-      params.durationType,
-      params.ratio,
-      params.resolution,
-      setParams,
-    ]
-  );
-
   const pollTask = useCallback(
     (localId: string, taskId: string, taskParams: ModelParamsType) => {
       const key = isAlibabaModel(taskParams.modelId)
@@ -461,6 +978,10 @@ export default function GenerateView() {
   const { tasks } = useAppStore();
 
   useEffect(() => {
+    if (!demoMode) clearDemoTasks();
+  }, [clearDemoTasks, demoMode, tasks.length]);
+
+  useEffect(() => {
     tasks.forEach((t) => {
       if (
         (t.status === "pending" || t.status === "queued" || t.status === "running") &&
@@ -480,11 +1001,10 @@ export default function GenerateView() {
   }, []);
 
   const handleGenerate = useCallback(async () => {
-    if (generateIssue || !activeApiKey) {
+    if (generateIssue || (!demoMode && !activeApiKey)) {
       setError(generateIssue || "API Key를 입력하세요.");
       return;
     }
-    const key = activeApiKey;
     setError("");
 
     const count = params.outputCount || 1;
@@ -499,7 +1019,8 @@ export default function GenerateView() {
       localIds.push(localId);
       addTask({
         id: localId,
-        taskId: "",
+        taskId: demoMode ? `demo-${localId}` : "",
+        demo: demoMode,
         prompt: trimmedPrompt,
         status: "pending",
         params: singleParams,
@@ -507,6 +1028,51 @@ export default function GenerateView() {
         createdAt: Date.now(),
       });
     }
+    window.setTimeout(() => {
+      resultsScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    }, 0);
+
+    if (demoMode) {
+      const demoVideoUrl =
+        "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
+      localIds.forEach((localId, index) => {
+        window.setTimeout(() => {
+          updateTask(localId, {
+            taskId: `demo-${localId}`,
+            status: "running",
+          });
+        }, 500 + index * 180);
+        window.setTimeout(() => {
+          updateTask(localId, {
+            status: "succeeded",
+            videoUrl: demoVideoUrl,
+            seed: Math.floor(Math.random() * 2147483647),
+            actualDuration:
+              singleParams.durationType === "seconds"
+                ? singleParams.duration
+                : 5,
+            actualRatio:
+              singleParams.ratio === "adaptive" ? "16:9" : singleParams.ratio,
+            actualResolution: singleParams.resolution,
+            usage: {
+              total_tokens: 108000,
+              output_video_duration:
+                singleParams.durationType === "seconds"
+                  ? singleParams.duration
+                  : 5,
+              video_count: 1,
+              SR: singleParams.resolution.replace("p", ""),
+              ratio:
+                singleParams.ratio === "adaptive" ? "16:9" : singleParams.ratio,
+            },
+          });
+        }, 1800 + index * 320);
+      });
+      return;
+    }
+
+    const key = activeApiKey;
+    if (!key) return;
 
     for (const localId of localIds) {
       createGenerationTask(key, trimmedPrompt, references, singleParams)
@@ -521,6 +1087,7 @@ export default function GenerateView() {
     }
   }, [
     activeApiKey,
+    demoMode,
     prompt,
     generateIssue,
     references,
@@ -531,20 +1098,20 @@ export default function GenerateView() {
   ]);
 
   return (
-    <div className="app-shell h-screen flex flex-col bg-surface-50">
-      <Header
-        onToggleParams={() => setParamsOpen(!paramsOpen)}
-        paramsOpen={paramsOpen}
-      />
+    <div className="app-shell h-screen flex flex-col">
+      <Header />
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
         {/* Main Content */}
         <div
           ref={mainRef}
           className="flex-1 flex flex-col overflow-hidden relative"
         >
           {/* Results Area */}
-          <div className="flex-1 overflow-y-auto p-5 pb-52 scrollbar-thin">
+          <div
+            ref={resultsScrollRef}
+            className="flex-1 overflow-y-auto p-5 pt-28 pb-52 scrollbar-thin"
+          >
             <VideoResult />
           </div>
 
@@ -552,21 +1119,274 @@ export default function GenerateView() {
           <PromptInsertProvider insert={insertAtCursor}>
           <div
             ref={composerRef}
-            className="absolute z-20 pointer-events-none"
+            className={`composer-dock absolute z-20 pointer-events-none ${
+              isExpanded ? "composer-dock-expanded" : "composer-dock-collapsed"
+            }`}
             style={{
               left: "50%",
-              bottom: 20,
-              width: isExpanded
+              bottom: "clamp(24px, 5vh, 52px)",
+              width: isExpanded && composerSize.width
+                ? `${composerSize.width}px`
+                : isExpanded
                 ? "min(calc(100% - 48px), 56rem)"
-                : "min(calc(100% - 48px), 42rem)",
+                : "min(calc(100% - 72px), 38rem)",
               transform: `translate(calc(-50% + ${composerOffset.x}px), ${composerOffset.y}px)`,
-              transition: isComposerDragging
-                ? "width 320ms cubic-bezier(0.2, 0.8, 0.2, 1)"
+              transition: isComposerResizing
+                ? "none"
+                : isComposerDragging
+                ? "transform 90ms cubic-bezier(0.22, 1, 0.36, 1)"
                 : isComposerSnapping
                 ? "transform 460ms cubic-bezier(0.2, 0.9, 0.18, 1.08), width 320ms cubic-bezier(0.2, 0.8, 0.2, 1)"
                 : "transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1), width 320ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+              willChange: "transform, width",
             }}
           >
+            {showReferenceSlot && (
+              <div
+                className="reference-slots pointer-events-auto absolute left-0 z-50 flex items-end gap-3"
+                style={{ bottom: "calc(100% + 1.1rem)" }}
+                data-no-composer-drag
+              >
+                <button
+                  type="button"
+                  onClick={() => referenceFileInputRef.current?.click()}
+                  onDragEnter={(event) => {
+                    event.preventDefault();
+                    setIsReferenceSlotOver(true);
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "copy";
+                    setIsReferenceSlotOver(true);
+                  }}
+                  onDragLeave={() => setIsReferenceSlotOver(false)}
+                  onDrop={handleReferenceSlotDrop}
+                  className={`reference-slot-card reference-file-slot group relative flex h-24 w-24 flex-col items-center justify-center overflow-hidden rounded-2xl border p-3 text-center transition-all ${
+                    isReferenceSlotOver ? "reference-slot-card-over" : ""
+                  } ${primaryReference ? "reference-slot-card-filled" : ""}`}
+                  title="파일 첨부"
+                >
+                  {referencePreviewUrl && (
+                    <img
+                      src={referencePreviewUrl}
+                      alt=""
+                      draggable={false}
+                      className="absolute inset-0 h-full w-full object-cover opacity-75"
+                    />
+                  )}
+                  <div className="reference-slot-scrim absolute inset-0" />
+                  <div className="reference-slot-plus relative z-10 flex h-10 w-10 items-center justify-center rounded-full">
+                    <Plus className="h-6 w-6" />
+                  </div>
+                  <span className="reference-slot-label absolute bottom-3 left-0 right-0 z-10 block text-xs font-black uppercase leading-none tracking-[0.08em]">
+                    FILE
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExternalReferenceError("");
+                    setExternalReferenceOpen((open) => !open);
+                  }}
+                  className="reference-slot-card reference-external-slot group relative flex h-24 w-24 flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border p-3 text-center transition-all"
+                  title="URL 또는 asset:// 첨부"
+                >
+                  <Link2 className="relative z-10 h-5 w-5" />
+                  <span className="relative z-10 text-[11px] font-black uppercase leading-tight tracking-[0.08em]">
+                    URL
+                    <br />
+                    ASSET
+                  </span>
+                </button>
+
+                <input
+                  ref={referenceFileInputRef}
+                  type="file"
+                  accept={referenceFileAccept}
+                  multiple={referenceFileMultiple}
+                  className="hidden"
+                  onChange={handleReferenceFileChange}
+                />
+
+                {externalReferenceOpen && (
+                  <div className="reference-external-popover absolute bottom-0 left-[13.4rem] z-50 w-[min(22rem,calc(100vw-3rem))] rounded-2xl border p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold">URL / asset://</p>
+                      <button
+                        type="button"
+                        onClick={() => setExternalReferenceOpen(false)}
+                        className="reference-external-close inline-flex h-7 w-7 items-center justify-center rounded-lg"
+                        aria-label="닫기"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        value={externalReferenceValue}
+                        onChange={(event) => {
+                          setExternalReferenceValue(event.target.value);
+                          setExternalReferenceError("");
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            handleExternalReferenceSubmit();
+                          }
+                        }}
+                        placeholder="https://... 또는 asset://..."
+                        className="reference-external-input min-w-0 flex-1 rounded-xl border px-3 py-2 text-xs outline-none"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={handleExternalReferenceSubmit}
+                        className="reference-external-submit rounded-xl px-3 py-2 text-xs font-semibold"
+                      >
+                        Add
+                      </button>
+                    </div>
+                    {externalReferenceError && (
+                      <p className="mt-2 text-[11px] text-red-400">
+                        {externalReferenceError}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            {isFirstLastMode && !isAlibaba && (
+              <div
+                className="keyframe-slots pointer-events-auto absolute left-0 z-50 flex items-end gap-3"
+                style={{ bottom: "calc(100% + 1.1rem)" }}
+                data-no-composer-drag
+              >
+                {(["first_frame", "last_frame"] as const).map((role) => {
+                  const frame = references.find((ref) => ref.role === role);
+                  const meta = FRAME_SLOT_META[role];
+
+                  return (
+                    <div
+                      key={role}
+                      role="button"
+                      tabIndex={0}
+                      draggable={Boolean(frame)}
+                      data-frame-role={role}
+                      onClick={() => {
+                        if (suppressFrameClickRef.current) {
+                          suppressFrameClickRef.current = false;
+                          return;
+                        }
+                        openFramePicker(role);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          openFramePicker(role);
+                        }
+                      }}
+                      onPointerDown={(event) =>
+                        handleFramePointerDown(role, event)
+                      }
+                      onPointerMove={handleFramePointerMove}
+                      onPointerUp={finishFramePointerDrag}
+                      onPointerCancel={finishFramePointerDrag}
+                      onDragStart={(event) => {
+                        if (!frame) {
+                          event.preventDefault();
+                          return;
+                        }
+                        setDraggedFrameRole(role);
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData(
+                          "application/x-frame-role",
+                          role
+                        );
+                      }}
+                      onDragEnter={(event) => {
+                        event.preventDefault();
+                        setDragOverFrameRole(role);
+                      }}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect =
+                          event.dataTransfer.files?.length ? "copy" : "move";
+                      }}
+                      onDrop={(event) => handleFrameSlotDrop(role, event)}
+                      onDragEnd={() => {
+                        setDraggedFrameRole(null);
+                        setDragOverFrameRole(null);
+                      }}
+                      className={`keyframe-slot-card group relative flex h-24 w-24 cursor-grab flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border p-3 text-center transition-all active:cursor-grabbing ${
+                        draggedFrameRole === role ? "opacity-45" : ""
+                      } ${
+                        dragOverFrameRole === role
+                          ? "keyframe-slot-card-over"
+                          : ""
+                      }`}
+                      title={
+                        frame
+                          ? `${meta.label} · 드래그해서 프레임 역할 이동`
+                          : `${meta.label} 이미지 추가`
+                      }
+                    >
+                      {frame?.preview && (
+                        <img
+                          src={frame.preview}
+                          alt=""
+                          draggable={false}
+                          className="absolute inset-0 h-full w-full object-cover opacity-75"
+                        />
+                      )}
+                      <div className="keyframe-slot-scrim absolute inset-0" />
+                      <div className="keyframe-slot-plus relative z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/12 text-white shadow-[inset_0_1px_0_rgb(255_255_255_/_0.18)]">
+                        <Plus className="h-6 w-6" />
+                      </div>
+                      <span className="relative z-10 whitespace-pre-line text-xs font-black uppercase leading-tight tracking-[0.06em] text-white/82">
+                        {meta.label.replace(" ", "\n")}
+                      </span>
+                      {frame && (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            removeFrame(role);
+                          }}
+                          onMouseDown={(event) => event.stopPropagation()}
+                          className="absolute right-2 top-2 z-20 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/55 text-white/80 transition-colors hover:bg-black/80 hover:text-white"
+                          title={`${meta.shortLabel} frame 제거`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                <input
+                  ref={firstFrameInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void handleFrameUpload(file, "first_frame");
+                    event.target.value = "";
+                  }}
+                />
+                <input
+                  ref={lastFrameInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void handleFrameUpload(file, "last_frame");
+                    event.target.value = "";
+                  }}
+                />
+              </div>
+            )}
             <button
               type="button"
               aria-label="프롬프트 창 이동"
@@ -574,8 +1394,8 @@ export default function GenerateView() {
               onPointerMove={handleComposerPointerMove}
               onPointerUp={finishComposerDrag}
               onPointerCancel={finishComposerDrag}
-              className={`absolute -top-8 left-1/2 z-30 -translate-x-1/2 pointer-events-auto h-5 w-11 rounded-full border border-gray-200 bg-surface-100 shadow-sm flex items-center justify-center text-gray-400 hover:text-primary-600 hover:border-primary-200 hover:bg-primary-50 cursor-grab active:cursor-grabbing transition-colors ${
-                isComposerDragging ? "text-primary-600 border-primary-300 bg-primary-50" : ""
+              className={`glass-chip absolute -top-8 left-1/2 z-30 -translate-x-1/2 pointer-events-auto h-5 w-11 rounded-full flex items-center justify-center text-gray-400 hover:text-primary-600 hover:border-primary-200 cursor-grab active:cursor-grabbing transition-colors ${
+                isComposerDragging ? "text-primary-600 border-primary-300" : ""
               }`}
               title="프롬프트 창 이동"
             >
@@ -583,19 +1403,23 @@ export default function GenerateView() {
             </button>
             <div className="pointer-events-auto">
               <div
-                className={`composer-shell relative bg-white rounded-2xl shadow-xl shadow-gray-200/60 border overflow-hidden transition-[border-color,box-shadow] duration-200 ${
+                className={`composer-shell glass-card subtle-glow relative cursor-move rounded-2xl border overflow-hidden transition-[border-color,box-shadow] duration-200 ${
                   isDragOver
                     ? "border-primary-400 ring-2 ring-primary-200"
-                    : "border-gray-100"
+                    : "border-white/60"
                 }`}
-                onClick={() => setPromptExpanded(true)}
+                onPointerDown={handleComposerSurfacePointerDown}
+                onPointerMove={handleComposerPointerMove}
+                onPointerUp={finishComposerDrag}
+                onPointerCancel={finishComposerDrag}
+                onClick={handleComposerClick}
                 onDragEnter={handleDragEnter}
                 onDragLeave={handleDragLeave}
                 onDragOver={handleDragOver}
                 onDrop={handleDrop}
               >
                 {isDragOver && (
-                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-primary-50/95 pointer-events-none rounded-2xl border-2 border-dashed border-primary-400">
+                  <div className="glass-popover absolute inset-0 z-10 flex flex-col items-center justify-center bg-primary-50/90 pointer-events-none rounded-2xl border-2 border-dashed border-primary-400">
                     <ImagePlus className="w-7 h-7 text-primary-500 mb-1" />
                     <p className="text-sm font-medium text-primary-600">
                       여기에 파일을 놓아 첨부
@@ -608,19 +1432,8 @@ export default function GenerateView() {
                   </div>
                 )}
 
-                {/* Reference Upload — animated collapse */}
-                <div
-                  className={`overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${
-                    showReferences
-                      ? "max-h-80 opacity-100 px-4 pt-4"
-                      : "max-h-0 opacity-0 px-4 pt-0"
-                  }`}
-                >
-                  <ReferenceUpload />
-                </div>
-
                 {/* Prompt Input */}
-                <div className="px-4 py-2">
+                <div className="px-4 py-2" data-prompt-editor-region>
                   <PromptEditor
                     ref={promptEditorRef}
                     value={prompt}
@@ -630,36 +1443,55 @@ export default function GenerateView() {
                     onBlur={() => {}}
                     rows={1}
                     className={
-                      isExpanded
+                      `${isExpanded
                         ? "prompt-editor-expanded"
-                        : "prompt-editor-collapsed"
+                        : "prompt-editor-collapsed"} ${
+                        isExpanded && composerSize.promptHeight
+                          ? "prompt-editor-resized"
+                          : ""
+                      }`
+                    }
+                    style={
+                      isExpanded && composerSize.promptHeight
+                        ? ({
+                            "--prompt-editor-height": `${composerSize.promptHeight}px`,
+                          } as CSSProperties)
+                        : undefined
                     }
                     placeholder={
                       isExpanded
                         ? isAlibaba
                           ? currentModel.happyHorseMode === "r2v"
-                            ? "프롬프트에서 @img1 태그를 쓰면 character1로 변환됩니다. 이미지 1~9개를 첨부하세요."
+                            ? "Describe the scene with attached character references..."
                             : currentModel.happyHorseMode === "i2v"
-                            ? "첫 프레임 이미지를 기준으로 움직임을 설명하세요. 프롬프트는 선택사항입니다."
-                            : "HappyHorse text-to-video 프롬프트를 입력하세요..."
+                            ? "Describe motion from the attached image..."
+                            : "Describe the video you want to create..."
                           : params.mode === "first_last_frame"
-                          ? "Describe the motion you want between the first and last frames..."
-                          : "프롬프트를 입력하세요. @를 입력하면 첨부 자산 자동완성이 뜹니다 (Tab/Enter 선택). @img1·@vid1·@aud1 등은 자동으로 칩으로 표시됩니다."
+                          ? "Describe camera or action in the scene..."
+                          : "Describe your scene with visual references..."
                         : isAlibaba
-                        ? "HappyHorse 프롬프트 / 클릭하면 크게 열림"
-                        : "프롬프트 입력 / @로 첨부 태그 / 클릭하면 크게 열림..."
+                        ? "Describe the video..."
+                        : params.mode === "first_last_frame"
+                        ? "Describe camera or action in the scene..."
+                        : "Describe your scene with visual references..."
                     }
                   />
                 </div>
 
                 {error && (
-                  <div className="mx-4 mb-2 p-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600">
+                  <div
+                    className="mx-4 mb-2 p-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600"
+                    data-no-composer-drag
+                  >
                     {error}
                   </div>
                 )}
 
                 {dropError && (
-                  <div className="mx-4 mb-2 p-2 bg-orange-50 border border-orange-200 rounded-lg text-[11px] text-orange-700 flex items-start gap-1.5">
+                  <div
+                    className="mx-4 mb-2 p-2 bg-orange-50 border border-orange-200 rounded-lg text-[11px] text-orange-700 flex items-start gap-1.5"
+                    data-no-composer-drag
+                  >
                     <span className="flex-1">{dropError}</span>
                     <button
                       onClick={clearDropError}
@@ -671,146 +1503,103 @@ export default function GenerateView() {
                 )}
 
                 {/* Bottom Bar */}
-                <div className="px-4 pb-3 flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-[11px] text-gray-500 flex-wrap">
-                    {/* Mode Dropdown */}
-                    <div className="relative">
-                      <button
-                        className="flex items-center gap-1 px-2 py-1 bg-primary-50 text-primary-600 rounded-lg font-medium text-[11px] hover:bg-primary-100 transition-colors"
-                        onClick={() => setModeDropdown(!modeDropdown)}
-                      >
-                        <Settings2 className="w-3 h-3" />
-                        {isAlibaba
-                          ? currentModel.happyHorseMode === "t2v"
-                            ? "Text-to-video"
-                            : currentModel.happyHorseMode === "i2v"
-                            ? "Image-to-video"
-                            : "Reference-to-video"
-                          : params.mode === "reference"
-                          ? "Reference"
-                          : "First&Last Frame"}
-                        <ChevronDown className="w-3 h-3" />
-                      </button>
-                      {modeDropdown && (
+                <div
+                  className="px-4 pb-3 flex items-center justify-between gap-3"
+                  data-no-composer-drag
+                >
+                  {isExpanded ? (
+                    <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-gray-500 flex-wrap">
+                      <span className="glass-chip flex items-center gap-1 px-2 py-1 text-primary-600 rounded-lg font-medium text-[11px]">
+                        {composerModeLabel}
+                      </span>
+
+                      <span className="text-gray-300">|</span>
+                      <span>{params.ratio === "adaptive" ? "Auto" : params.ratio}</span>
+                      <span className="text-gray-300">|</span>
+                      <span>{params.resolution}</span>
+                      <span className="text-gray-300">|</span>
+                      <span>
+                        {params.durationType === "seconds"
+                          ? `${params.duration}s`
+                          : "Smart"}
+                      </span>
+                      <span className="text-gray-300">|</span>
+                      <span>{params.outputCount} videos</span>
+                      {params.generateAudio && !isAlibaba && (
                         <>
-                          <div
-                            className="fixed inset-0 z-10"
-                            onClick={() => setModeDropdown(false)}
-                          />
-                          <div className="absolute bottom-full mb-1 left-0 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-20 min-w-[200px]">
-                            <p className="px-3 py-1.5 text-[10px] text-gray-400 font-medium">
-                              {isAlibaba ? "HappyHorse model" : "Generation mode"}
-                            </p>
-                            {isAlibaba ? (
-                              happyHorseModels.map((model) => (
-                                <button
-                                  key={model.id}
-                                  className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center justify-between gap-2 ${
-                                    params.modelId === model.id
-                                      ? "text-primary-600 bg-primary-50"
-                                      : "text-gray-700"
-                                  }`}
-                                  onClick={() => selectHappyHorseModel(model.id)}
-                                >
-                                  <span>
-                                    {model.happyHorseMode === "t2v"
-                                      ? "Text-to-video"
-                                      : model.happyHorseMode === "i2v"
-                                      ? "Image-to-video"
-                                      : "Reference-to-video"}
-                                  </span>
-                                  {params.modelId === model.id && (
-                                    <span className="text-primary-500">&#10003;</span>
-                                  )}
-                                </button>
-                              ))
-                            ) : (
-                              <>
-                                <button
-                                  className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-2 ${
-                                    params.mode === "reference"
-                                      ? "text-primary-600 bg-primary-50"
-                                      : "text-gray-700"
-                                  }`}
-                                  onClick={() => {
-                                    useAppStore.getState().setParams({ mode: "reference" });
-                                    setModeDropdown(false);
-                                  }}
-                                >
-                                  Reference generation
-                                  {params.mode === "reference" && (
-                                    <span className="text-primary-500">&#10003;</span>
-                                  )}
-                                </button>
-                                <button
-                                  className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-2 ${
-                                    params.mode === "first_last_frame"
-                                      ? "text-primary-600 bg-primary-50"
-                                      : "text-gray-700"
-                                  }`}
-                                  onClick={() => {
-                                    useAppStore.getState().setParams({ mode: "first_last_frame" });
-                                    setModeDropdown(false);
-                                  }}
-                                >
-                                  First&last frame
-                                  {params.mode === "first_last_frame" && (
-                                    <span className="text-primary-500">&#10003;</span>
-                                  )}
-                                </button>
-                              </>
-                            )}
-                          </div>
+                          <span className="text-gray-300">|</span>
+                          <span className="px-1.5 py-0.5 border border-primary-300 text-primary-600 rounded font-medium text-[10px]">
+                            Sound
+                          </span>
                         </>
                       )}
                     </div>
+                  ) : (
+                    <div aria-hidden="true" />
+                  )}
 
-                    <span className="text-gray-300">|</span>
-                    <span>{params.ratio === "adaptive" ? "Auto" : params.ratio}</span>
-                    <span className="text-gray-300">|</span>
-                    <span>{params.resolution}</span>
-                    <span className="text-gray-300">|</span>
-                    <span>
-                      {params.durationType === "seconds"
-                        ? `${params.duration}s`
-                        : "Smart"}
-                    </span>
-                    <span className="text-gray-300">|</span>
-                    <span>{params.outputCount} videos</span>
-                    {params.generateAudio && !isAlibaba && (
-                      <>
-                        <span className="text-gray-300">|</span>
-                        <span className="px-1.5 py-0.5 border border-primary-300 text-primary-600 rounded font-medium text-[10px]">
-                          Sound
-                        </span>
-                      </>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0 ml-2">
-                    <span className="text-[10px] text-gray-400">
+                  <div className="flex min-w-0 items-center gap-2 shrink-0 ml-2">
+                    <span className="hidden text-[10px] text-gray-400 sm:inline">
                       {isAlibaba
                         ? "DashScope usage"
                         : `~${(estimateTokens(params, hasVideoRef) / 1000).toFixed(0)}K tokens · $${cost.toFixed(3)}`}
                     </span>
                     <button
+                      type="button"
+                      onClick={() => setParamsOpen((open) => !open)}
+                      className="composer-settings-summary glass-chip flex max-w-[min(54vw,24rem)] items-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500 transition-colors hover:text-gray-800"
+                      title="Generation settings"
+                    >
+                      <span className="truncate">{composerSummary}</span>
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                    </button>
+                    <button
+                      type="button"
                       onClick={handleGenerate}
                       disabled={generateDisabled}
                       title={generateDisabled ? "파일 업로드가 끝난 뒤 생성할 수 있습니다." : "Generate"}
-                      className="p-2 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-200 disabled:text-gray-300 text-white rounded-xl transition-colors"
+                      className="composer-generate-button primary-button shrink-0 disabled:bg-gray-200 disabled:text-gray-300 text-white transition-all disabled:shadow-none"
                     >
                       <Play className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
+
               </div>
+              {paramsOpen && (
+                <div
+                  className="composer-settings-popover pointer-events-auto absolute right-0 z-50"
+                  style={{ bottom: "3.55rem" }}
+                  data-no-composer-drag
+                  onPointerDown={(event) => event.stopPropagation()}
+                >
+                  <ModelParams
+                    onClose={() => setParamsOpen(false)}
+                    variant="composer"
+                  />
+                </div>
+              )}
+              <button
+                type="button"
+                aria-label="프롬프트 입력칸 크기 조절"
+                title="프롬프트 입력칸 크기 조절"
+                data-no-composer-drag
+                onPointerDown={handleComposerResizePointerDown}
+                onPointerMove={handleComposerResizePointerMove}
+                onPointerUp={finishComposerResize}
+                onPointerCancel={finishComposerResize}
+                className={`composer-resize-handle absolute bottom-2 left-2 z-40 h-4 w-4 transition-opacity ${
+                  isExpanded
+                    ? "composer-resize-handle-visible pointer-events-auto"
+                    : "composer-resize-handle-hidden"
+                } ${
+                  isComposerResizing ? "composer-resize-handle-active" : ""
+                }`}
+              />
             </div>
           </div>
           </PromptInsertProvider>
         </div>
-
-        {/* Params Panel */}
-        {paramsOpen && <ModelParams onClose={() => setParamsOpen(false)} />}
       </div>
     </div>
   );

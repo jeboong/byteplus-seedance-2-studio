@@ -1,133 +1,232 @@
 "use client";
 
-import { useState } from "react";
-import { KeyRound, ArrowRight, Video, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowRight, Eye, KeyRound } from "lucide-react";
 import { useAppStore } from "@/lib/store";
+import { BackgroundGradientAnimation } from "./BackgroundGradientAnimation";
 
-export default function Onboarding() {
+type ProviderId = "byteplus" | "modelstudio";
+
+const INTRO_HOLD_MS = 2800;
+
+export default function Onboarding({
+  onBrowse,
+  onComplete,
+  initialStage = "intro",
+}: {
+  onBrowse: () => void;
+  onComplete?: () => void;
+  initialStage?: "intro" | "setup";
+}) {
   const setApiKey = useAppStore((s) => s.setApiKey);
   const setAlibabaApiKey = useAppStore((s) => s.setAlibabaApiKey);
+  const [stage, setStage] = useState<"intro" | "setup">(initialStage);
+  const [introReady, setIntroReady] = useState(false);
+  const [selected, setSelected] = useState<ProviderId[]>(["byteplus"]);
   const [key, setKey] = useState("");
   const [alibabaKey, setAlibabaKey] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setIntroReady(true), INTRO_HOLD_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const toggleProvider = (provider: ProviderId) => {
+    setSelected((current) =>
+      current.includes(provider)
+        ? current.filter((item) => item !== provider)
+        : [...current, provider]
+    );
+    setError("");
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = key.trim();
     const trimmedAlibaba = alibabaKey.trim();
-    if (!trimmed && !trimmedAlibaba) {
-      setError("BytePlus 또는 Alibaba ModelStudio API Key 중 하나를 입력해주세요.");
+
+    if (selected.length === 0) {
+      setError("사용할 API를 선택해주세요.");
       return;
     }
-    if ((trimmed && trimmed.length < 10) || (trimmedAlibaba && trimmedAlibaba.length < 10)) {
-      setError("유효한 API Key를 입력해주세요.");
+    if (selected.includes("byteplus") && trimmed.length < 10) {
+      setError("BytePlus API Key를 입력해주세요.");
       return;
     }
-    if (trimmed) setApiKey(trimmed);
-    if (trimmedAlibaba) setAlibabaApiKey(trimmedAlibaba);
+    if (selected.includes("modelstudio") && trimmedAlibaba.length < 10) {
+      setError("ModelStudio API Key를 입력해주세요.");
+      return;
+    }
+
+    if (selected.includes("byteplus")) setApiKey(trimmed);
+    if (selected.includes("modelstudio")) setAlibabaApiKey(trimmedAlibaba);
+    localStorage.removeItem("sd2_browse_mode");
+    onComplete?.();
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-primary-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary-500 text-white mb-4 shadow-lg shadow-primary-200">
-            <Video className="w-8 h-8" />
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Seedance 2.0 Studio
-          </h1>
-          <p className="text-gray-500 text-sm">
-            BytePlus ModelArk 기반 AI 비디오 생성 플랫폼
-          </p>
-        </div>
+    <main className="onboarding-shell min-h-screen p-5">
+      <BackgroundGradientAnimation
+        firstColor="255, 255, 255"
+        secondColor="90, 128, 190"
+        thirdColor="255, 255, 255"
+        fourthColor="20, 28, 42"
+        fifthColor="8, 10, 14"
+        pointerColor="255, 255, 255"
+        size="64%"
+        blendingValue="screen"
+      />
 
-        <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/50 border border-gray-100 p-8">
-          <div className="flex items-center gap-2 mb-6">
-            <Sparkles className="w-5 h-5 text-primary-500" />
-            <h2 className="text-lg font-semibold text-gray-800">시작하기</h2>
-          </div>
-
-          <p className="text-sm text-gray-500 mb-6">
-            BytePlus Ark 또는 Alibaba ModelStudio API Key를 입력하세요.
-            키는 브라우저에만 저장되고 API 호출 시 서버 프록시로만 전달됩니다.
-          </p>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label
-                htmlFor="apiKey"
-                className="block text-sm font-medium text-gray-700 mb-1.5"
-              >
-                API Key
-              </label>
-              <div className="relative">
-                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  id="apiKey"
-                  type="password"
-                  value={key}
-                  onChange={(e) => {
-                    setKey(e.target.value);
-                    setError("");
-                  }}
-                  placeholder="BytePlus Ark API Key"
-                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
-                />
-              </div>
-              <div className="relative mt-2">
-                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="password"
-                  value={alibabaKey}
-                  onChange={(e) => {
-                    setAlibabaKey(e.target.value);
-                    setError("");
-                  }}
-                  placeholder="Alibaba ModelStudio API Key"
-                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
-                />
-              </div>
-              {error && (
-                <p className="mt-1.5 text-xs text-red-500">{error}</p>
-              )}
-            </div>
-
-            <button
-              type="submit"
-              className="w-full flex items-center justify-center gap-2 bg-primary-500 hover:bg-primary-600 text-white py-3 rounded-xl text-sm font-medium transition-colors shadow-lg shadow-primary-200"
-            >
-              시작하기
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </form>
-
-          <div className="mt-6 p-4 bg-surface-50 rounded-xl">
-            <p className="text-xs text-gray-400 leading-relaxed">
-              <span className="font-medium text-gray-500">지원 모델:</span>{" "}
-              Seedance 2.0 / HappyHorse 1.0
-              <br />
-              <span className="font-medium text-gray-500">Alibaba:</span>{" "}
-              happyhorse-1.0-t2v / i2v / r2v
-              <br />
-              <span className="font-medium text-gray-500">해상도:</span> 480p,
-              720p
-              <br />
-              <span className="font-medium text-gray-500">비율:</span> 16:9,
-              9:16, 4:3, 3:4, 21:9, 1:1, Adaptive
-              <br />
-              <span className="font-medium text-gray-500">길이:</span> 4~15초
-              <br />
-              <span className="font-medium text-gray-500">기능:</span>{" "}
-              멀티모달 레퍼런스, 비디오 편집, 비디오 확장, 오디오 동기화
+      {stage === "intro" ? (
+        <section className="onboarding-intro flex min-h-[calc(100vh-40px)] flex-col items-center justify-center text-center">
+          <div className="space-y-5">
+            <p className="onboarding-type-main text-[clamp(3.25rem,11vw,11rem)] font-semibold leading-none tracking-normal text-gray-900">
+              망상을 작품으로
+            </p>
+            <p className="onboarding-type-sub text-[clamp(0.68rem,1.35vw,1.05rem)] font-medium uppercase tracking-[0.24em] text-gray-500">
+              STUDIOFREEWILLUSION STUDIO
             </p>
           </div>
-        </div>
+          <button
+            type="button"
+            onClick={() => setStage("setup")}
+            className={`onboarding-start-button primary-button mt-12 inline-flex items-center gap-2 rounded-full px-7 py-3 text-sm font-semibold transition-all ${
+              introReady ? "opacity-100 translate-y-0" : "pointer-events-none opacity-0 translate-y-2"
+            }`}
+          >
+            시작하기
+            <ArrowRight className="h-4 w-4" />
+          </button>
+        </section>
+      ) : (
+        <section className="flex min-h-[calc(100vh-40px)] items-center justify-center">
+          <div className="onboarding-card glass-panel subtle-glow motion-rise w-full max-w-xl rounded-2xl p-5 sm:p-7">
+            <div className="mb-7">
+              <p className="mb-3 text-xs uppercase tracking-[0.24em] text-gray-500">
+                API setup
+              </p>
+              <h1 className="text-3xl font-semibold tracking-normal text-gray-900">
+                연결할 API 선택
+              </h1>
+              <p className="mt-2 text-sm text-gray-500">
+                선택한 제공자의 입력칸만 표시됩니다.
+              </p>
+            </div>
 
-        <p className="text-center text-xs text-gray-400 mt-6">
-          Powered by BytePlus ModelArk &middot; Alibaba ModelStudio
-        </p>
-      </div>
-    </div>
+            <div className="mb-5">
+              <p className="mb-2 text-xs font-medium text-gray-600">
+                지원 API Key
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => toggleProvider("byteplus")}
+                  aria-pressed={selected.includes("byteplus")}
+                  className={`provider-chip rounded-xl border px-3 py-3 text-xs font-medium transition-all ${
+                    selected.includes("byteplus") ? "provider-chip-active" : ""
+                  }`}
+                >
+                  byteplus
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleProvider("modelstudio")}
+                  aria-pressed={selected.includes("modelstudio")}
+                  className={`provider-chip rounded-xl border px-3 py-3 text-xs font-medium transition-all ${
+                    selected.includes("modelstudio") ? "provider-chip-active" : ""
+                  }`}
+                >
+                  modelstudio?
+                </button>
+                <button
+                  type="button"
+                  disabled
+                  className="provider-chip rounded-xl border px-3 py-3 text-xs font-medium opacity-45"
+                >
+                  coming soon...
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-3">
+              {selected.includes("byteplus") && (
+                <div className="motion-rise">
+                  <label
+                    htmlFor="apiKey"
+                    className="mb-1.5 block text-xs font-medium text-gray-600"
+                  >
+                    BytePlus
+                  </label>
+                  <div className="relative">
+                    <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <input
+                      id="apiKey"
+                      type="password"
+                      value={key}
+                      onChange={(e) => {
+                        setKey(e.target.value);
+                        setError("");
+                      }}
+                      placeholder="BytePlus API Key"
+                      className="glass-control w-full rounded-xl border px-10 py-3 text-sm outline-none transition-all placeholder:text-gray-400 focus:ring-2 focus:ring-primary-400"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {selected.includes("modelstudio") && (
+                <div className="motion-rise">
+                  <label
+                    htmlFor="alibabaApiKey"
+                    className="mb-1.5 block text-xs font-medium text-gray-600"
+                  >
+                    ModelStudio
+                  </label>
+                  <div className="relative">
+                    <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <input
+                      id="alibabaApiKey"
+                      type="password"
+                      value={alibabaKey}
+                      onChange={(e) => {
+                        setAlibabaKey(e.target.value);
+                        setError("");
+                      }}
+                      placeholder="ModelStudio API Key"
+                      className="glass-control w-full rounded-xl border px-10 py-3 text-sm outline-none transition-all placeholder:text-gray-400 focus:ring-2 focus:ring-primary-400"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {error && (
+                <p className="rounded-lg border border-red-200 bg-red-50/70 px-3 py-2 text-xs text-red-600">
+                  {error}
+                </p>
+              )}
+
+              <div className="grid gap-2 pt-2 sm:grid-cols-[1fr_auto]">
+                <button
+                  type="submit"
+                  className="primary-button inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-all"
+                >
+                  연결하기
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={onBrowse}
+                  className="glass-chip inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium text-gray-600 transition-colors hover:text-gray-900"
+                >
+                  <Eye className="h-4 w-4" />
+                  둘러보기
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+      )}
+    </main>
   );
 }

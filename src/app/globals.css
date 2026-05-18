@@ -11,6 +11,7 @@ body {
     "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background: #f7f7f8;
 }
 
 input[type="range"] {
@@ -28,7 +29,7 @@ input[type="range"]::-webkit-slider-thumb {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #7c3aed;
+  background: #2563eb;
   cursor: pointer;
   border: 2px solid white;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
@@ -38,7 +39,7 @@ input[type="range"]::-moz-range-thumb {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #7c3aed;
+  background: #2563eb;
   cursor: pointer;
   border: 2px solid white;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
@@ -171,6 +172,434 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 2px;
 }
 
+@keyframes ambient-drift {
+  0%,
+  100% {
+    transform: translate3d(-1.2%, -0.8%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(1.2%, 0.8%, 0) scale(1.03);
+  }
+}
+
+@keyframes surface-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes gradient-orbit-first {
+  0%,
+  100% {
+    transform: translate3d(-6%, -4%, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(7%, 6%, 0) rotate(14deg);
+  }
+}
+
+@keyframes gradient-orbit-second {
+  0%,
+  100% {
+    transform: translate3d(8%, -2%, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(-9%, 5%, 0) rotate(-18deg);
+  }
+}
+
+@keyframes gradient-orbit-third {
+  0%,
+  100% {
+    transform: translate3d(-4%, 7%, 0) scale(0.94);
+  }
+  50% {
+    transform: translate3d(5%, -6%, 0) scale(1.04);
+  }
+}
+
+@keyframes gradient-orbit-fourth {
+  0%,
+  100% {
+    transform: translate3d(2%, 4%, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(-5%, -5%, 0) rotate(20deg);
+  }
+}
+
+@keyframes gradient-orbit-fifth {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(6%, 3%, 0) scale(1.08);
+  }
+}
+
+.gradient-animation-bg {
+  position: absolute;
+  inset: 0;
+  z-index: -3;
+  overflow: hidden;
+  background: linear-gradient(
+    40deg,
+    var(--gradient-background-start),
+    var(--gradient-background-end)
+  );
+}
+
+.gradients-container {
+  position: absolute;
+  inset: -12%;
+  opacity: 0.58;
+  filter: blur(42px);
+}
+
+.gradients-container-goo {
+  filter: url("#bwBlueGradientBlur") blur(40px);
+}
+
+.gradients-container-safari {
+  filter: blur(58px);
+}
+
+.gradient-orb {
+  position: absolute;
+  top: calc(50% - var(--size) / 2);
+  left: calc(50% - var(--size) / 2);
+  width: var(--size);
+  height: var(--size);
+  mix-blend-mode: var(--blending-value);
+  transform-origin: center center;
+  opacity: 0.66;
+}
+
+.gradient-orb-first {
+  background: radial-gradient(
+    circle at center,
+    rgba(var(--first-color), 0.56) 0,
+    rgba(var(--first-color), 0) 52%
+  );
+  animation: gradient-orbit-first 18s ease-in-out infinite;
+}
+
+.gradient-orb-second {
+  background: radial-gradient(
+    circle at center,
+    rgba(var(--second-color), 0.38) 0,
+    rgba(var(--second-color), 0) 54%
+  );
+  transform-origin: calc(50% - 280px) center;
+  animation: gradient-orbit-second 22s ease-in-out infinite;
+}
+
+.gradient-orb-third {
+  background: radial-gradient(
+    circle at center,
+    rgba(var(--third-color), 0.22) 0,
+    rgba(var(--third-color), 0) 46%
+  );
+  transform-origin: calc(50% + 260px) center;
+  animation: gradient-orbit-third 20s ease-in-out infinite;
+}
+
+.gradient-orb-fourth {
+  background: radial-gradient(
+    circle at center,
+    rgba(var(--fourth-color), 0.34) 0,
+    rgba(var(--fourth-color), 0) 50%
+  );
+  transform-origin: center calc(50% - 220px);
+  animation: gradient-orbit-fourth 24s ease-in-out infinite;
+}
+
+.gradient-orb-fifth {
+  background: radial-gradient(
+    circle at center,
+    rgba(var(--fifth-color), 0.52) 0,
+    rgba(var(--fifth-color), 0) 56%
+  );
+  transform-origin: calc(50% - 420px) calc(50% + 420px);
+  animation: gradient-orbit-fifth 26s ease-in-out infinite;
+}
+
+.gradient-orb-pointer {
+  top: 50%;
+  left: 50%;
+  width: 46%;
+  height: 46%;
+  background: radial-gradient(
+    circle at center,
+    rgba(var(--pointer-color), 0.24) 0,
+    rgba(var(--pointer-color), 0) 55%
+  );
+  opacity: 0.42;
+  will-change: transform;
+}
+
+.app-shell,
+.onboarding-shell {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 18% 8%, rgb(59 130 246 / 0.08), transparent 28%),
+    radial-gradient(circle at 82% 12%, rgb(255 255 255 / 0.30), transparent 26%),
+    radial-gradient(circle at 78% 78%, rgb(96 165 250 / 0.07), transparent 30%),
+    linear-gradient(135deg, #fbfbfc 0%, #f4f6fa 50%, #eef3fb 100%);
+}
+
+.app-shell::before,
+.onboarding-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    linear-gradient(rgb(15 23 42 / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(15 23 42 / 0.032) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: linear-gradient(to bottom, black, rgb(0 0 0 / 0.78) 58%, transparent 100%);
+}
+
+.app-shell::after,
+.onboarding-shell::after {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  z-index: -3;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 34% 34%, rgb(96 165 250 / 0.10), transparent 24%),
+    radial-gradient(circle at 64% 58%, rgb(255 255 255 / 0.16), transparent 26%),
+    radial-gradient(circle at 50% 88%, rgb(30 64 175 / 0.06), transparent 22%);
+  filter: blur(20px);
+  animation: ambient-drift 14s ease-in-out infinite;
+}
+
+.app-shell > *,
+.onboarding-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+.onboarding-shell > .gradient-animation-bg {
+  position: absolute;
+  z-index: 0;
+}
+
+.glass-panel,
+.glass-card,
+.glass-popover,
+.glass-nav,
+.glass-control,
+.glass-chip {
+  border: 1px solid rgb(255 255 255 / 0.68);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.78), rgb(255 255 255 / 0.56)),
+    linear-gradient(135deg, rgb(255 255 255 / 0.38), rgb(255 255 255 / 0.10));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.72),
+    0 18px 48px rgb(15 23 42 / 0.08);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+}
+
+.glass-card,
+.glass-panel,
+.glass-popover,
+.task-card,
+.composer-shell,
+.onboarding-card {
+  position: relative;
+}
+
+.glass-card::before,
+.glass-panel::before,
+.glass-popover::before,
+.task-card::before,
+.composer-shell::before,
+.onboarding-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(rgb(15 23 42 / 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(15 23 42 / 0.024) 1px, transparent 1px),
+    radial-gradient(circle at 18% 0%, rgb(96 165 250 / 0.08), transparent 30%),
+    radial-gradient(circle at 92% 12%, rgb(255 255 255 / 0.12), transparent 32%);
+  background-size: 22px 22px, 22px 22px, 100% 100%, 100% 100%;
+  opacity: 0.7;
+  mask-image: linear-gradient(to bottom, black, rgb(0 0 0 / 0.58));
+}
+
+.glass-card > *,
+.glass-panel > *,
+.glass-popover > *,
+.task-card > *,
+.composer-shell > *,
+.onboarding-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.glass-nav {
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.76), rgb(255 255 255 / 0.54)),
+    radial-gradient(circle at 12% 0%, rgb(96 165 250 / 0.08), transparent 32%),
+    radial-gradient(circle at 72% 0%, rgb(255 255 255 / 0.18), transparent 34%);
+  box-shadow:
+    inset 0 -1px 0 rgb(255 255 255 / 0.5),
+    0 12px 34px rgb(15 23 42 / 0.05);
+}
+
+.glass-control {
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.70), rgb(255 255 255 / 0.48)),
+    rgb(255 255 255 / 0.26);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.58),
+    0 8px 22px rgb(15 23 42 / 0.04);
+}
+
+.glass-chip {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.58),
+    0 8px 18px rgb(15 23 42 / 0.04);
+}
+
+.primary-button {
+  background:
+    linear-gradient(135deg, #111827 0%, #1d4ed8 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.22),
+    0 14px 30px rgb(29 78 216 / 0.18);
+}
+
+.primary-button:hover {
+  filter: saturate(1.06) brightness(1.03);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.28),
+    0 18px 38px rgb(15 23 42 / 0.10),
+    0 16px 34px rgb(29 78 216 / 0.20);
+}
+
+.motion-rise {
+  animation: surface-rise 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.subtle-glow {
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.46),
+    0 20px 55px rgb(15 23 42 / 0.10),
+    0 0 42px rgb(96 165 250 / 0.08);
+}
+
+.param-panel,
+.task-card {
+  border-color: rgb(255 255 255 / 0.62) !important;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.76), rgb(255 255 255 / 0.54)),
+    radial-gradient(circle at 8% 0%, rgb(96 165 250 / 0.06), transparent 32%),
+    radial-gradient(circle at 100% 12%, rgb(255 255 255 / 0.14), transparent 36%) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.70),
+    0 18px 48px rgb(15 23 42 / 0.08) !important;
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+}
+
+.param-panel-header {
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.82), rgb(255 255 255 / 0.58)),
+    rgb(255 255 255 / 0.28) !important;
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+}
+
+.param-segmented,
+.view-toggle {
+  border: 1px solid rgb(255 255 255 / 0.55);
+  background: rgb(255 255 255 / 0.34) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.48);
+}
+
+.param-choice-selected,
+.view-toggle-selected {
+  background: rgb(255 255 255 / 0.76) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.62),
+    0 8px 18px rgb(15 23 42 / 0.06) !important;
+}
+
+.prompt-editor-shell,
+.mention-popover {
+  border-color: rgb(255 255 255 / 0.62) !important;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.70), rgb(255 255 255 / 0.48)),
+    rgb(255 255 255 / 0.22) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.56),
+    0 14px 30px rgb(15 23 42 / 0.07) !important;
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+}
+
+.mention-option-active {
+  background: rgb(124 58 237 / 0.10) !important;
+}
+
+.primary-button:disabled {
+  background: #d1d5db !important;
+  color: #9ca3af !important;
+  box-shadow: none !important;
+  filter: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell::after,
+  .onboarding-shell::after,
+  .motion-rise {
+    animation: none !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .param-panel {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    bottom: 12px;
+    z-index: 35;
+    width: min(21rem, calc(100% - 24px)) !important;
+    height: auto !important;
+    border-radius: 16px;
+    border-left-width: 1px;
+  }
+
+  .param-panel-header {
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+  }
+}
+
+@media (max-width: 640px) {
+  .param-panel {
+    left: 12px;
+    width: auto !important;
+  }
+}
+
 /* ──────────────────────────────────────────────────────────────────────────
  * DARK MODE — Linear / Vercel-inspired neutral palette
  *
@@ -206,6 +635,123 @@ html.dark body {
   color: #ededed;
 }
 
+html.dark .app-shell,
+html.dark .onboarding-shell {
+  background:
+    radial-gradient(circle at 18% 8%, rgb(59 130 246 / 0.10), transparent 28%),
+    radial-gradient(circle at 84% 12%, rgb(255 255 255 / 0.05), transparent 26%),
+    radial-gradient(circle at 78% 76%, rgb(96 165 250 / 0.08), transparent 30%),
+    linear-gradient(135deg, #070707 0%, #0e0e10 48%, #101014 100%);
+}
+
+html.dark .app-shell::before,
+html.dark .onboarding-shell::before {
+  background:
+    linear-gradient(rgb(255 255 255 / 0.038) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.032) 1px, transparent 1px);
+}
+
+html.dark .glass-panel,
+html.dark .glass-card,
+html.dark .glass-popover,
+html.dark .glass-nav,
+html.dark .glass-control,
+html.dark .glass-chip {
+  border-color: rgb(255 255 255 / 0.10);
+  background:
+    linear-gradient(180deg, rgb(24 24 27 / 0.76), rgb(12 12 14 / 0.62)),
+    linear-gradient(135deg, rgb(255 255 255 / 0.08), rgb(255 255 255 / 0.02));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    0 20px 54px rgb(0 0 0 / 0.38);
+}
+
+html.dark .glass-card::before,
+html.dark .glass-panel::before,
+html.dark .glass-popover::before,
+html.dark .task-card::before,
+html.dark .composer-shell::before,
+html.dark .onboarding-card::before {
+  background:
+    linear-gradient(rgb(255 255 255 / 0.032) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.026) 1px, transparent 1px),
+    radial-gradient(circle at 18% 0%, rgb(96 165 250 / 0.08), transparent 30%),
+    radial-gradient(circle at 92% 12%, rgb(255 255 255 / 0.06), transparent 32%);
+}
+
+html.dark .glass-nav {
+  background:
+    linear-gradient(180deg, rgb(20 20 22 / 0.80), rgb(10 10 11 / 0.62)),
+    radial-gradient(circle at 12% 0%, rgb(96 165 250 / 0.07), transparent 32%),
+    radial-gradient(circle at 72% 0%, rgb(255 255 255 / 0.05), transparent 34%);
+}
+
+html.dark .glass-control {
+  background:
+    linear-gradient(180deg, rgb(30 30 32 / 0.70), rgb(17 17 18 / 0.54)),
+    rgb(255 255 255 / 0.02);
+}
+
+html.dark .subtle-glow {
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.08),
+    0 22px 58px rgb(0 0 0 / 0.46),
+    0 0 42px rgb(96 165 250 / 0.07);
+}
+
+html.dark .param-panel,
+html.dark .task-card {
+  border-color: rgb(255 255 255 / 0.10) !important;
+  background:
+    linear-gradient(180deg, rgb(24 24 27 / 0.76), rgb(12 12 14 / 0.64)),
+    radial-gradient(circle at 8% 0%, rgb(96 165 250 / 0.07), transparent 32%),
+    radial-gradient(circle at 100% 12%, rgb(255 255 255 / 0.04), transparent 36%) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    0 20px 54px rgb(0 0 0 / 0.36) !important;
+}
+
+html.dark .param-panel-header {
+  background:
+    linear-gradient(180deg, rgb(24 24 27 / 0.86), rgb(14 14 16 / 0.66)),
+    rgb(255 255 255 / 0.02) !important;
+}
+
+html.dark .param-segmented,
+html.dark .view-toggle {
+  border-color: rgb(255 255 255 / 0.08);
+  background: rgb(255 255 255 / 0.045) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+}
+
+html.dark .param-choice-selected,
+html.dark .view-toggle-selected {
+  background: rgb(255 255 255 / 0.09) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 8px 18px rgb(0 0 0 / 0.18) !important;
+}
+
+html.dark .prompt-editor-shell,
+html.dark .mention-popover {
+  border-color: rgb(255 255 255 / 0.10) !important;
+  background:
+    linear-gradient(180deg, rgb(28 28 30 / 0.76), rgb(14 14 16 / 0.58)),
+    rgb(255 255 255 / 0.02) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    0 16px 34px rgb(0 0 0 / 0.28) !important;
+}
+
+html.dark .mention-option-active {
+  background: rgb(167 139 250 / 0.15) !important;
+}
+
+html.dark .primary-button:disabled {
+  background: #262626 !important;
+  color: #525252 !important;
+}
+
 @layer utilities {
   /* ───── Backgrounds ─────
    * bg-white        → cards / inputs (elevated)
@@ -231,10 +777,10 @@ html.dark body {
   html.dark .hover\:bg-gray-200:hover { background-color: #2e2e2e !important; }
 
   /* Primary accent tints — desaturated low-luminance violet */
-  html.dark .bg-primary-50            { background-color: rgb(124 58 237 / 0.16) !important; }
-  html.dark .bg-primary-100           { background-color: rgb(124 58 237 / 0.24) !important; }
-  html.dark .hover\:bg-primary-50:hover  { background-color: rgb(124 58 237 / 0.22) !important; }
-  html.dark .hover\:bg-primary-100:hover { background-color: rgb(124 58 237 / 0.32) !important; }
+  html.dark .bg-primary-50            { background-color: rgb(37 99 235 / 0.16) !important; }
+  html.dark .bg-primary-100           { background-color: rgb(37 99 235 / 0.24) !important; }
+  html.dark .hover\:bg-primary-50:hover  { background-color: rgb(37 99 235 / 0.22) !important; }
+  html.dark .hover\:bg-primary-100:hover { background-color: rgb(37 99 235 / 0.32) !important; }
 
   /* Status tints */
   html.dark .bg-orange-50             { background-color: rgb(234 88 12 / 0.15) !important; }
@@ -271,7 +817,7 @@ html.dark body {
   html.dark .text-green-600,
   html.dark .text-green-700           { color: #4ade80 !important; }
   html.dark .text-primary-600,
-  html.dark .text-primary-700         { color: #a78bfa !important; }
+  html.dark .text-primary-700         { color: #93c5fd !important; }
 
   /* Placeholder text */
   html.dark .placeholder\:text-gray-400::placeholder { color: #525252 !important; }
@@ -287,7 +833,7 @@ html.dark body {
   html.dark .divide-gray-200 > * + *  { border-color: #2e2e2e !important; }
 
   html.dark .ring-gray-200            { --tw-ring-color: #2e2e2e !important; }
-  html.dark .ring-primary-200         { --tw-ring-color: rgb(167 139 250 / 0.35) !important; }
+  html.dark .ring-primary-200         { --tw-ring-color: rgb(96 165 250 / 0.35) !important; }
 
   /* Shadows — minimal, just darken */
   html.dark .shadow-sm,
@@ -608,7 +1154,9 @@ html.dark .generation-fx-copy span + span {
 }
 
 .prompt-editor-collapsed .prompt-editor-textarea {
-  min-height: 42px;
+  min-height: 32px;
+  padding-top: 0.42rem;
+  padding-bottom: 0.42rem;
 }
 
 .prompt-editor-expanded .prompt-editor-textarea {
@@ -1014,4 +1562,3021 @@ html.dark .task-card {
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.05),
     0 16px 36px rgb(0 0 0 / 0.32) !important;
+}
+
+/* Final tone pass: black/white glass with restrained blue accents. */
+.app-shell {
+  background:
+    radial-gradient(circle at 18% 12%, rgb(37 99 235 / 0.08), transparent 28%),
+    radial-gradient(circle at 82% 22%, rgb(255 255 255 / 0.22), transparent 30%),
+    linear-gradient(180deg, #fbfbfc, #f4f6fa) !important;
+}
+
+.app-shell::after {
+  opacity: 0.54;
+  background: linear-gradient(115deg, transparent 22%, rgb(255 255 255 / 0.36), transparent 48%, rgb(96 165 250 / 0.08), transparent 68%) !important;
+}
+
+.composer-shell,
+.param-panel,
+.task-card,
+.mention-popover {
+  border-color: rgb(15 23 42 / 0.09) !important;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.84), rgb(255 255 255 / 0.66)),
+    radial-gradient(circle at 18% 0%, rgb(37 99 235 / 0.06), transparent 34%) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.74),
+    0 16px 42px rgb(15 23 42 / 0.08) !important;
+}
+
+.prompt-editor-shell {
+  border-color: rgb(15 23 42 / 0.09) !important;
+  background: rgb(255 255 255 / 0.58) !important;
+}
+
+.prompt-editor-shell:focus-within {
+  border-color: rgb(37 99 235 / 0.42) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.70),
+    0 0 0 1px rgb(37 99 235 / 0.12),
+    0 0 28px rgb(37 99 235 / 0.08) !important;
+}
+
+.mention-option-active {
+  background: rgb(37 99 235 / 0.10) !important;
+}
+
+.param-option::after {
+  background: radial-gradient(circle at 50% 0%, rgb(37 99 235 / 0.12), transparent 58%) !important;
+}
+
+.param-choice-selected,
+.view-toggle-selected {
+  color: #1e3a8a !important;
+  border-color: rgb(37 99 235 / 0.34) !important;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.96), rgb(239 246 255 / 0.88)) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.86),
+    0 8px 22px rgb(37 99 235 / 0.09) !important;
+}
+
+.generation-fx,
+.generation-aura {
+  border-color: rgb(37 99 235 / 0.16) !important;
+  background:
+    radial-gradient(circle at 30% 18%, rgb(96 165 250 / 0.12), transparent 30%),
+    radial-gradient(circle at 72% 68%, rgb(255 255 255 / 0.20), transparent 32%),
+    linear-gradient(180deg, rgb(255 255 255 / 0.90), rgb(247 248 251 / 0.82)) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.68),
+    0 18px 42px rgb(15 23 42 / 0.06) !important;
+}
+
+.generation-fx::before,
+.generation-aura::before {
+  background: linear-gradient(120deg, #dbeafe, #60a5fa, #ffffff, #1e3a8a, #dbeafe) !important;
+  opacity: 0.20 !important;
+}
+
+.generation-fx-copy {
+  color: #1d4ed8 !important;
+}
+
+.generation-grid-shell::before {
+  background: radial-gradient(circle, rgb(96 165 250 / 0.16), transparent 60%) !important;
+}
+
+.generation-grid {
+  box-shadow:
+    inset 0 0 22px rgb(255 255 255 / 0.28),
+    0 18px 44px rgb(37 99 235 / 0.08) !important;
+}
+
+.generation-grid-cell {
+  animation-duration: 3.4s;
+}
+
+html.dark .app-shell,
+html.dark .onboarding-shell {
+  background:
+    radial-gradient(circle at 18% 10%, rgb(37 99 235 / 0.10), transparent 30%),
+    radial-gradient(circle at 82% 24%, rgb(255 255 255 / 0.04), transparent 30%),
+    linear-gradient(180deg, #070707, #0d0d0f) !important;
+}
+
+html.dark .composer-shell,
+html.dark .param-panel,
+html.dark .task-card,
+html.dark .mention-popover {
+  border-color: rgb(255 255 255 / 0.08) !important;
+  background:
+    linear-gradient(180deg, rgb(22 22 24 / 0.86), rgb(12 12 14 / 0.78)),
+    radial-gradient(circle at 18% 0%, rgb(37 99 235 / 0.08), transparent 34%) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    0 20px 48px rgb(0 0 0 / 0.38) !important;
+}
+
+html.dark .prompt-editor-shell {
+  border-color: rgb(255 255 255 / 0.08) !important;
+  background: rgb(8 8 10 / 0.46) !important;
+}
+
+html.dark .prompt-editor-shell:focus-within {
+  border-color: rgb(96 165 250 / 0.44) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    0 0 0 1px rgb(96 165 250 / 0.14),
+    0 0 26px rgb(37 99 235 / 0.14) !important;
+}
+
+html.dark .param-choice-selected,
+html.dark .view-toggle-selected {
+  color: #dbeafe !important;
+  border-color: rgb(96 165 250 / 0.38) !important;
+  background:
+    linear-gradient(180deg, rgb(37 99 235 / 0.26), rgb(37 99 235 / 0.12)) !important;
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.06),
+    0 10px 24px rgb(37 99 235 / 0.12) !important;
+}
+
+html.dark .mention-option-active {
+  background: rgb(96 165 250 / 0.14) !important;
+}
+
+html.dark .generation-fx,
+html.dark .generation-aura {
+  border-color: rgb(96 165 250 / 0.16) !important;
+  background:
+    radial-gradient(circle at 28% 20%, rgb(96 165 250 / 0.10), transparent 30%),
+    radial-gradient(circle at 74% 70%, rgb(255 255 255 / 0.045), transparent 34%),
+    linear-gradient(180deg, rgb(18 18 20 / 0.92), rgb(8 8 10 / 0.96)) !important;
+}
+
+html.dark .generation-fx::before,
+html.dark .generation-aura::before {
+  opacity: 0.12 !important;
+}
+
+/* Minimal glass pass: inspired by low-contrast glass UI, not gradient-heavy. */
+.gradient-animation-bg {
+  background: #070b12 !important;
+}
+
+.gradients-container {
+  opacity: 0.12 !important;
+  filter: blur(84px) !important;
+}
+
+.gradients-container-goo,
+.gradients-container-safari {
+  filter: blur(84px) !important;
+}
+
+.gradient-orb {
+  mix-blend-mode: screen;
+  opacity: 0.34 !important;
+}
+
+.gradient-orb-first {
+  background: radial-gradient(circle at center, rgb(255 255 255 / 0.20) 0, transparent 58%) !important;
+}
+
+.gradient-orb-second {
+  background: radial-gradient(circle at center, rgb(59 130 246 / 0.16) 0, transparent 60%) !important;
+}
+
+.gradient-orb-third,
+.gradient-orb-fourth,
+.gradient-orb-fifth {
+  display: none !important;
+}
+
+.gradient-orb-pointer {
+  background: radial-gradient(circle at center, rgb(255 255 255 / 0.08) 0, transparent 58%) !important;
+  opacity: 0.18 !important;
+}
+
+.app-shell,
+.onboarding-shell,
+html.dark .app-shell,
+html.dark .onboarding-shell {
+  background: #08090b !important;
+}
+
+.app-shell::after,
+.onboarding-shell::after {
+  display: none !important;
+}
+
+.app-shell::before,
+.onboarding-shell::before {
+  background:
+    linear-gradient(rgb(255 255 255 / 0.026) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.022) 1px, transparent 1px) !important;
+  background-size: 32px 32px !important;
+  opacity: 0.58;
+  mask-image: linear-gradient(to bottom, black, transparent 78%);
+}
+
+.glass-panel,
+.glass-card,
+.glass-popover,
+.glass-nav,
+.glass-control,
+.glass-chip,
+.composer-shell,
+.param-panel,
+.task-card,
+.mention-popover,
+html.dark .glass-panel,
+html.dark .glass-card,
+html.dark .glass-popover,
+html.dark .glass-nav,
+html.dark .glass-control,
+html.dark .glass-chip,
+html.dark .composer-shell,
+html.dark .param-panel,
+html.dark .task-card,
+html.dark .mention-popover {
+  border-color: rgb(255 255 255 / 0.10) !important;
+  background: rgb(255 255 255 / 0.055) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.055),
+    0 28px 90px rgb(0 0 0 / 0.30) !important;
+  backdrop-filter: blur(24px) saturate(118%);
+  -webkit-backdrop-filter: blur(24px) saturate(118%);
+}
+
+.glass-card::before,
+.glass-panel::before,
+.glass-popover::before,
+.task-card::before,
+.composer-shell::before,
+.onboarding-card::before {
+  background:
+    linear-gradient(rgb(255 255 255 / 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.018) 1px, transparent 1px) !important;
+  background-size: 24px 24px !important;
+  opacity: 0.32 !important;
+  mask-image: linear-gradient(to bottom, black, transparent 76%);
+}
+
+.glass-nav,
+html.dark .glass-nav {
+  background: rgb(8 9 11 / 0.76) !important;
+  box-shadow:
+    inset 0 -1px 0 rgb(255 255 255 / 0.06),
+    0 12px 40px rgb(0 0 0 / 0.22) !important;
+}
+
+.primary-button,
+.primary-button:hover,
+html.dark .primary-button,
+html.dark .primary-button:hover {
+  color: #08090b !important;
+  background: rgb(245 247 250 / 0.94) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.50),
+    0 14px 36px rgb(0 0 0 / 0.22) !important;
+  filter: none !important;
+}
+
+.primary-button svg,
+html.dark .primary-button svg {
+  color: currentColor;
+}
+
+.prompt-editor-shell,
+html.dark .prompt-editor-shell {
+  border-color: rgb(255 255 255 / 0.10) !important;
+  background: rgb(0 0 0 / 0.16) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.035) !important;
+}
+
+.prompt-editor-shell:focus-within,
+html.dark .prompt-editor-shell:focus-within {
+  border-color: rgb(255 255 255 / 0.20) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    0 0 0 1px rgb(255 255 255 / 0.06) !important;
+}
+
+.param-segmented,
+.view-toggle,
+html.dark .param-segmented,
+html.dark .view-toggle {
+  border-color: rgb(255 255 255 / 0.08) !important;
+  background: rgb(0 0 0 / 0.14) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03) !important;
+}
+
+.param-choice-selected,
+.view-toggle-selected,
+html.dark .param-choice-selected,
+html.dark .view-toggle-selected {
+  color: rgb(255 255 255 / 0.92) !important;
+  border-color: rgb(255 255 255 / 0.18) !important;
+  background: rgb(255 255 255 / 0.105) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.07),
+    0 10px 28px rgb(0 0 0 / 0.16) !important;
+}
+
+.param-option::after,
+.param-option:hover::after {
+  display: none !important;
+}
+
+.mention-option-active,
+html.dark .mention-option-active {
+  background: rgb(255 255 255 / 0.08) !important;
+}
+
+.subtle-glow,
+html.dark .subtle-glow {
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.08),
+    0 40px 120px rgb(0 0 0 / 0.28) !important;
+}
+
+.generation-fx,
+.generation-aura,
+html.dark .generation-fx,
+html.dark .generation-aura {
+  border-color: rgb(255 255 255 / 0.08) !important;
+  background: rgb(255 255 255 / 0.045) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    0 20px 70px rgb(0 0 0 / 0.24) !important;
+}
+
+.generation-fx::before,
+.generation-fx::after,
+.generation-aura::before,
+.generation-aura::after,
+html.dark .generation-fx::before,
+html.dark .generation-fx::after,
+html.dark .generation-aura::before,
+html.dark .generation-aura::after {
+  display: none !important;
+}
+
+.generation-fx-copy,
+html.dark .generation-fx-copy {
+  color: rgb(255 255 255 / 0.78) !important;
+}
+
+.generation-grid-shell::before,
+html.dark .generation-grid-shell::before {
+  display: none !important;
+}
+
+.generation-grid,
+html.dark .generation-grid {
+  border-color: rgb(255 255 255 / 0.08) !important;
+  background: rgb(255 255 255 / 0.055) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04) !important;
+}
+
+.text-primary-500,
+.text-primary-600,
+.text-primary-700,
+html.dark .text-primary-500,
+html.dark .text-primary-600,
+html.dark .text-primary-700 {
+  color: rgb(191 219 254 / 0.86) !important;
+}
+
+.bg-primary-50,
+.bg-primary-100,
+html.dark .bg-primary-50,
+html.dark .bg-primary-100 {
+  background-color: rgb(255 255 255 / 0.075) !important;
+}
+
+.border-primary-200,
+.border-primary-300,
+.border-primary-400,
+html.dark .border-primary-200,
+html.dark .border-primary-300,
+html.dark .border-primary-400 {
+  border-color: rgb(255 255 255 / 0.18) !important;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  background: #f8fafc !important;
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 0.12) !important;
+}
+
+input[type="range"]::-moz-range-thumb {
+  background: #f8fafc !important;
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 0.12) !important;
+}
+
+.onboarding-card,
+html.dark .onboarding-card {
+  border-color: rgb(255 255 255 / 0.22) !important;
+  background: rgb(255 255 255 / 0.18) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.11),
+    0 40px 120px rgb(0 0 0 / 0.38) !important;
+}
+
+.onboarding-card::before,
+html.dark .onboarding-card::before {
+  display: none !important;
+}
+
+.onboarding-card h2,
+html.dark .onboarding-card h2 {
+  color: rgb(255 255 255 / 0.98) !important;
+}
+
+.onboarding-card label,
+.onboarding-card .text-gray-600,
+html.dark .onboarding-card label,
+html.dark .onboarding-card .text-gray-600 {
+  color: rgb(255 255 255 / 0.78) !important;
+}
+
+.onboarding-card .text-gray-500,
+html.dark .onboarding-card .text-gray-500 {
+  color: rgb(255 255 255 / 0.66) !important;
+}
+
+.onboarding-card .glass-control,
+html.dark .onboarding-card .glass-control {
+  border-color: rgb(255 255 255 / 0.18) !important;
+  background: rgb(0 0 0 / 0.26) !important;
+}
+
+.onboarding-card .glass-chip,
+html.dark .onboarding-card .glass-chip {
+  border-color: rgb(255 255 255 / 0.10) !important;
+  background: rgb(255 255 255 / 0.055) !important;
+}
+
+@keyframes type-reveal-main {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes type-reveal-sub {
+  from {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0.2;
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+
+@keyframes caret-blink {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  46%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.onboarding-intro {
+  color: #ffffff !important;
+  position: relative;
+  z-index: 2;
+}
+
+.onboarding-type-main,
+.onboarding-type-sub {
+  position: relative;
+  display: inline-block;
+  max-width: calc(100vw - 2rem);
+  width: fit-content;
+  margin-inline: auto;
+  white-space: nowrap;
+  color: currentColor !important;
+}
+
+.onboarding-type-main {
+  font-size: clamp(3.25rem, 11vw, 11rem) !important;
+  text-shadow: 0 1px 0 rgb(255 255 255 / 0.08);
+}
+
+.onboarding-type-sub {
+  font-size: clamp(0.68rem, 1.35vw, 1.05rem) !important;
+  color: rgb(255 255 255 / 0.62) !important;
+}
+
+@media (max-width: 640px) {
+  .onboarding-type-main {
+    font-size: min(12vw, 4.8rem) !important;
+  }
+
+  .onboarding-type-sub {
+    font-size: min(2.2vw, 0.82rem) !important;
+  }
+}
+
+.onboarding-type-main {
+  animation: type-reveal-main 1150ms steps(7, end) 220ms both;
+}
+
+.onboarding-type-sub {
+  animation: type-reveal-sub 1250ms steps(28, end) 1500ms both;
+}
+
+.onboarding-type-main::after,
+.onboarding-type-sub::after {
+  content: "";
+  position: absolute;
+  top: 0.08em;
+  right: -0.10em;
+  width: 0.035em;
+  height: 0.84em;
+  background: currentColor;
+  animation: caret-blink 760ms steps(1, end) infinite;
+}
+
+.onboarding-type-sub::after {
+  width: 1px;
+  right: -0.35em;
+}
+
+.provider-chip {
+  border-color: rgb(255 255 255 / 0.10);
+  background: rgb(255 255 255 / 0.045);
+  color: rgb(255 255 255 / 0.60);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.provider-chip-active {
+  border-color: rgb(255 255 255 / 0.22);
+  background: rgb(255 255 255 / 0.12);
+  color: rgb(255 255 255 / 0.92);
+}
+
+html:not(.dark) {
+  background-color: #f6f7f8;
+  color: #111827;
+}
+
+html:not(.dark) body {
+  background-color: #f6f7f8;
+  color: #111827;
+}
+
+html:not(.dark) .app-shell,
+html:not(.dark) .onboarding-shell {
+  background: #f6f7f8 !important;
+  color: #111827;
+}
+
+html:not(.dark) .gradient-animation-bg {
+  background: #f6f7f8 !important;
+}
+
+html:not(.dark) .gradients-container {
+  opacity: 0.12 !important;
+}
+
+html:not(.dark) .app-shell::before,
+html:not(.dark) .onboarding-shell::before {
+  background:
+    linear-gradient(rgb(15 23 42 / 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(15 23 42 / 0.024) 1px, transparent 1px) !important;
+}
+
+html:not(.dark) .glass-panel,
+html:not(.dark) .glass-card,
+html:not(.dark) .glass-popover,
+html:not(.dark) .glass-nav,
+html:not(.dark) .glass-control,
+html:not(.dark) .glass-chip,
+html:not(.dark) .composer-shell,
+html:not(.dark) .param-panel,
+html:not(.dark) .task-card,
+html:not(.dark) .mention-popover {
+  border-color: rgb(15 23 42 / 0.10) !important;
+  background: rgb(255 255 255 / 0.68) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.70),
+    0 28px 90px rgb(15 23 42 / 0.10) !important;
+}
+
+html:not(.dark) .glass-nav {
+  background: rgb(255 255 255 / 0.78) !important;
+  box-shadow:
+    inset 0 -1px 0 rgb(15 23 42 / 0.06),
+    0 12px 40px rgb(15 23 42 / 0.06) !important;
+}
+
+html:not(.dark) .primary-button,
+html:not(.dark) .primary-button:hover {
+  color: #ffffff !important;
+  background: #111827 !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.18),
+    0 16px 42px rgb(15 23 42 / 0.18) !important;
+}
+
+html:not(.dark) .onboarding-intro,
+html:not(.dark) .onboarding-card h1,
+html:not(.dark) .onboarding-card h2 {
+  color: #111827 !important;
+}
+
+html:not(.dark) .onboarding-card {
+  border-color: rgb(15 23 42 / 0.12) !important;
+  background: rgb(255 255 255 / 0.74) !important;
+}
+
+html:not(.dark) .onboarding-card label,
+html:not(.dark) .onboarding-card .text-gray-600 {
+  color: rgb(17 24 39 / 0.72) !important;
+}
+
+html:not(.dark) .onboarding-card .text-gray-500,
+html:not(.dark) .onboarding-type-sub {
+  color: rgb(17 24 39 / 0.54) !important;
+}
+
+html:not(.dark) .prompt-editor-shell,
+html:not(.dark) .onboarding-card .glass-control {
+  border-color: rgb(15 23 42 / 0.10) !important;
+  background: rgb(255 255 255 / 0.62) !important;
+}
+
+html:not(.dark) .param-segmented,
+html:not(.dark) .view-toggle {
+  border-color: rgb(15 23 42 / 0.08) !important;
+  background: rgb(15 23 42 / 0.04) !important;
+}
+
+html:not(.dark) .param-choice-selected,
+html:not(.dark) .view-toggle-selected,
+html:not(.dark) .provider-chip-active {
+  color: #111827 !important;
+  border-color: rgb(15 23 42 / 0.16) !important;
+  background: rgb(255 255 255 / 0.78) !important;
+}
+
+html:not(.dark) .provider-chip {
+  border-color: rgb(15 23 42 / 0.10);
+  background: rgb(255 255 255 / 0.50);
+  color: rgb(17 24 39 / 0.58);
+}
+
+html:not(.dark) .text-primary-500,
+html:not(.dark) .text-primary-600,
+html:not(.dark) .text-primary-700 {
+  color: rgb(30 64 175 / 0.86) !important;
+}
+
+input[type="range"].range-control {
+  --range-active: #3157c9;
+  --range-track: rgb(17 24 39 / 0.12);
+  background: linear-gradient(
+    to right,
+    var(--range-active) 0 var(--range-progress, 0%),
+    var(--range-track) var(--range-progress, 0%) 100%
+  ) !important;
+  border-radius: 999px;
+}
+
+input[type="range"].range-control::-webkit-slider-thumb {
+  width: 18px;
+  height: 18px;
+  background: #ffffff !important;
+  border: 2px solid var(--range-active) !important;
+  box-shadow:
+    0 0 0 4px rgb(49 87 201 / 0.18),
+    0 8px 20px rgb(15 23 42 / 0.18) !important;
+}
+
+input[type="range"].range-control::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  background: #ffffff !important;
+  border: 2px solid var(--range-active) !important;
+  box-shadow:
+    0 0 0 4px rgb(49 87 201 / 0.18),
+    0 8px 20px rgb(15 23 42 / 0.18) !important;
+}
+
+input[type="range"].range-control:disabled {
+  --range-active: rgb(49 87 201 / 0.38);
+  --range-track: rgb(17 24 39 / 0.08);
+  cursor: not-allowed;
+}
+
+html.dark input[type="range"].range-control {
+  --range-active: #f8fafc;
+  --range-track: rgb(255 255 255 / 0.14);
+}
+
+html.dark input[type="range"].range-control::-webkit-slider-thumb {
+  background: #f8fafc !important;
+  border-color: #111827 !important;
+  box-shadow:
+    0 0 0 4px rgb(255 255 255 / 0.18),
+    0 8px 22px rgb(0 0 0 / 0.35) !important;
+}
+
+html.dark input[type="range"].range-control::-moz-range-thumb {
+  background: #f8fafc !important;
+  border-color: #111827 !important;
+  box-shadow:
+    0 0 0 4px rgb(255 255 255 / 0.18),
+    0 8px 22px rgb(0 0 0 / 0.35) !important;
+}
+
+html.dark input[type="range"].range-control:disabled {
+  --range-active: rgb(248 250 252 / 0.34);
+  --range-track: rgb(255 255 255 / 0.09);
+}
+
+.ratio-picker {
+  overflow: hidden;
+}
+
+.ratio-preview-button {
+  display: inline-flex;
+  border: 0;
+  border-radius: 0.9rem;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  outline: none;
+  transition:
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 160ms ease;
+}
+
+.ratio-preview-button:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.02);
+}
+
+.ratio-preview-button:focus-visible {
+  box-shadow: 0 0 0 3px rgb(49 87 201 / 0.22);
+}
+
+.ratio-preview {
+  border-color: rgb(15 23 42 / 0.10);
+  background:
+    linear-gradient(rgb(15 23 42 / 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(15 23 42 / 0.045) 1px, transparent 1px),
+    rgb(255 255 255 / 0.54);
+  background-size: 12px 12px;
+}
+
+.ratio-preview-frame {
+  border-color: rgb(49 87 201 / 0.75);
+  background: rgb(49 87 201 / 0.10);
+  box-shadow: 0 10px 30px rgb(15 23 42 / 0.10);
+  transition:
+    width 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-radius 200ms ease,
+    background 200ms ease;
+}
+
+.ratio-preview-adaptive {
+  border-style: dashed;
+}
+
+.ratio-select {
+  background: rgb(255 255 255 / 0.58) !important;
+}
+
+.ratio-chip-row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.3rem;
+}
+
+.ratio-chip {
+  min-height: 2rem;
+  border: 1px solid rgb(15 23 42 / 0.09);
+  border-radius: 999px;
+  color: rgb(75 85 99 / 0.86);
+  background: rgb(255 255 255 / 0.50);
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  transition:
+    color 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.ratio-chip:hover {
+  color: rgb(31 41 55);
+  border-color: rgb(15 23 42 / 0.16);
+  background: rgb(255 255 255 / 0.76);
+  transform: translateY(-1px);
+}
+
+.ratio-chip-active {
+  color: #fff;
+  border-color: rgb(15 23 42 / 0.86);
+  background: rgb(15 23 42 / 0.92);
+}
+
+.prompt-editor-resized .prompt-editor-textarea {
+  min-height: var(--prompt-editor-height) !important;
+}
+
+.composer-resize-handle {
+  cursor: nwse-resize;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  opacity: 0.54;
+}
+
+.composer-resize-handle::before,
+.composer-resize-handle::after {
+  content: "";
+  position: absolute;
+  border-right: 1.5px solid rgb(15 23 42 / 0.34);
+  border-bottom: 1.5px solid rgb(15 23 42 / 0.34);
+  border-radius: 0 0 3px 0;
+}
+
+.composer-resize-handle::before {
+  inset: 3px 2px 2px 3px;
+}
+
+.composer-resize-handle::after {
+  inset: 9px 2px 2px 9px;
+}
+
+.composer-resize-handle:hover,
+.composer-resize-handle-active {
+  opacity: 0.9;
+}
+
+.keyframe-slots {
+  filter: drop-shadow(0 22px 28px rgb(15 23 42 / 0.18));
+}
+
+.reference-slots {
+  filter: drop-shadow(0 22px 28px rgb(15 23 42 / 0.18));
+}
+
+.reference-slot-card {
+  border-color: rgb(15 23 42 / 0.12);
+  background:
+    linear-gradient(180deg, rgb(17 24 39 / 0.78), rgb(17 24 39 / 0.54)),
+    rgb(17 24 39 / 0.58);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.18),
+    0 18px 42px rgb(15 23 42 / 0.20);
+  transform: rotate(-2.5deg);
+  transform-origin: 50% 88%;
+  backdrop-filter: blur(18px) saturate(112%);
+  -webkit-backdrop-filter: blur(18px) saturate(112%);
+}
+
+.reference-slot-card:hover,
+.reference-slot-card:focus-visible,
+.reference-slot-card-over {
+  border-color: rgb(49 87 201 / 0.34);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.28),
+    0 0 0 4px rgb(49 87 201 / 0.12),
+    0 22px 54px rgb(15 23 42 / 0.24);
+}
+
+.reference-slot-card-filled {
+  transform: rotate(-1.5deg) translateY(2px);
+}
+
+.reference-slot-scrim {
+  background:
+    radial-gradient(circle at 28% 16%, rgb(255 255 255 / 0.18), transparent 34%),
+    linear-gradient(180deg, rgb(255 255 255 / 0.08), rgb(0 0 0 / 0.34));
+}
+
+.reference-tray-popover {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.68),
+    0 26px 64px rgb(15 23 42 / 0.20);
+}
+
+.keyframe-slot-card {
+  border-color: rgb(15 23 42 / 0.12);
+  background:
+    linear-gradient(180deg, rgb(17 24 39 / 0.78), rgb(17 24 39 / 0.54)),
+    rgb(17 24 39 / 0.58);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.18),
+    0 18px 42px rgb(15 23 42 / 0.20);
+  transform-origin: 50% 88%;
+  backdrop-filter: blur(18px) saturate(112%);
+  -webkit-backdrop-filter: blur(18px) saturate(112%);
+}
+
+.keyframe-slot-card:nth-child(odd) {
+  transform: rotate(-3deg);
+}
+
+.keyframe-slot-card:nth-child(even) {
+  transform: rotate(3deg) translateY(4px);
+}
+
+.keyframe-slot-card:hover,
+.keyframe-slot-card:focus-visible,
+.keyframe-slot-card-over {
+  border-color: rgb(49 87 201 / 0.34);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.28),
+    0 0 0 4px rgb(49 87 201 / 0.12),
+    0 22px 54px rgb(15 23 42 / 0.24);
+}
+
+.keyframe-slot-scrim {
+  background:
+    radial-gradient(circle at 28% 16%, rgb(255 255 255 / 0.18), transparent 34%),
+    linear-gradient(180deg, rgb(255 255 255 / 0.08), rgb(0 0 0 / 0.30));
+}
+
+html.dark .ratio-preview {
+  border-color: rgb(255 255 255 / 0.10);
+  background:
+    linear-gradient(rgb(255 255 255 / 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px),
+    rgb(255 255 255 / 0.04);
+  background-size: 12px 12px;
+}
+
+html.dark .ratio-preview-frame {
+  border-color: rgb(248 250 252 / 0.78);
+  background: rgb(248 250 252 / 0.08);
+  box-shadow: 0 12px 34px rgb(0 0 0 / 0.32);
+}
+
+html.dark .ratio-select {
+  background: rgb(255 255 255 / 0.055) !important;
+}
+
+html.dark .ratio-chip {
+  color: rgb(226 232 240 / 0.76);
+  border-color: rgb(255 255 255 / 0.10);
+  background: rgb(255 255 255 / 0.055);
+}
+
+html.dark .ratio-chip:hover {
+  color: rgb(248 250 252);
+  border-color: rgb(255 255 255 / 0.18);
+  background: rgb(255 255 255 / 0.10);
+}
+
+html.dark .ratio-chip-active {
+  color: rgb(15 23 42);
+  border-color: rgb(255 255 255 / 0.86);
+  background: rgb(248 250 252 / 0.90);
+}
+
+html.dark .composer-resize-handle {
+  background: transparent;
+}
+
+html.dark .composer-resize-handle::before,
+html.dark .composer-resize-handle::after {
+  border-color: rgb(255 255 255 / 0.42);
+}
+
+html.dark .keyframe-slot-card {
+  border-color: rgb(255 255 255 / 0.12);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.20), rgb(255 255 255 / 0.08)),
+    rgb(255 255 255 / 0.08);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.18),
+    0 24px 48px rgb(0 0 0 / 0.42);
+}
+
+html.dark .reference-slot-card {
+  border-color: rgb(255 255 255 / 0.12);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.20), rgb(255 255 255 / 0.08)),
+    rgb(255 255 255 / 0.08);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.18),
+    0 24px 48px rgb(0 0 0 / 0.42);
+}
+
+.floating-app-controls {
+  position: fixed !important;
+  top: 1rem !important;
+  right: 1rem !important;
+  z-index: 80 !important;
+  pointer-events: auto;
+}
+
+.settings-overlay {
+  background:
+    radial-gradient(circle at 28% 18%, rgb(255 255 255 / 0.42), transparent 30%),
+    radial-gradient(circle at 78% 64%, rgb(49 87 201 / 0.08), transparent 34%),
+    rgb(247 248 250 / 0.54);
+  backdrop-filter: blur(18px) saturate(112%);
+  -webkit-backdrop-filter: blur(18px) saturate(112%);
+}
+
+.model-settings-dialog {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.72),
+    0 36px 120px rgb(15 23 42 / 0.20) !important;
+}
+
+.settings-mode-tab,
+.composer-mode-tab {
+  border: 1px solid rgb(15 23 42 / 0.08);
+  background: rgb(255 255 255 / 0.58);
+  color: rgb(17 24 39 / 0.56);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  transition:
+    color 180ms ease,
+    background 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.settings-mode-tab {
+  border-radius: 999px;
+  padding: 0.68rem 0.9rem;
+}
+
+.composer-mode-tab {
+  border-radius: 999px;
+  padding: 0.55rem 1rem;
+  text-transform: uppercase;
+  box-shadow: 0 14px 34px rgb(15 23 42 / 0.10);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.settings-mode-tab:hover,
+.composer-mode-tab:hover {
+  color: rgb(17 24 39 / 0.88);
+  transform: translateY(-1px);
+}
+
+.settings-mode-tab-active,
+.composer-mode-tab-active {
+  border-color: rgb(15 23 42 / 0.18);
+  background: rgb(17 24 39 / 0.90);
+  color: #ffffff;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.20),
+    0 18px 42px rgb(15 23 42 / 0.16);
+}
+
+html.dark .settings-overlay {
+  background:
+    radial-gradient(circle at 24% 16%, rgb(255 255 255 / 0.08), transparent 30%),
+    radial-gradient(circle at 82% 62%, rgb(34 197 94 / 0.08), transparent 32%),
+    rgb(0 0 0 / 0.50);
+}
+
+html.dark .model-settings-dialog {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.10),
+    0 42px 130px rgb(0 0 0 / 0.48) !important;
+}
+
+html.dark .settings-mode-tab,
+html.dark .composer-mode-tab {
+  border-color: rgb(255 255 255 / 0.10);
+  background: rgb(255 255 255 / 0.075);
+  color: rgb(255 255 255 / 0.56);
+}
+
+html.dark .settings-mode-tab:hover,
+html.dark .composer-mode-tab:hover {
+  color: rgb(255 255 255 / 0.86);
+}
+
+html.dark .settings-mode-tab-active,
+html.dark .composer-mode-tab-active {
+  border-color: rgb(255 255 255 / 0.24);
+  background: rgb(255 255 255 / 0.90);
+  color: #09090b;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.70),
+    0 18px 44px rgb(0 0 0 / 0.30);
+}
+
+.composer-shell {
+  border-radius: 1.6rem !important;
+  border-color: rgb(255 255 255 / 0.11) !important;
+  background:
+    radial-gradient(circle at 100% 100%, rgb(20 83 45 / 0.18), transparent 42%),
+    linear-gradient(180deg, rgb(25 25 25 / 0.72), rgb(14 14 14 / 0.62)) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 30px 90px rgb(0 0 0 / 0.38),
+    0 0 0 1px rgb(255 255 255 / 0.04) !important;
+  backdrop-filter: blur(24px) saturate(112%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(112%) !important;
+}
+
+.composer-shell::before {
+  opacity: 0.22 !important;
+}
+
+.composer-shell .prompt-editor-shell {
+  border-color: rgb(255 255 255 / 0.10) !important;
+  background: rgb(255 255 255 / 0.035) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06) !important;
+}
+
+.composer-shell .prompt-editor-textarea {
+  color: rgb(255 255 255 / 0.88) !important;
+}
+
+.composer-shell .prompt-editor-textarea::placeholder {
+  color: rgb(255 255 255 / 0.36) !important;
+}
+
+.composer-shell .text-gray-300 {
+  color: rgb(255 255 255 / 0.22) !important;
+}
+
+.composer-shell .text-gray-400 {
+  color: rgb(255 255 255 / 0.44) !important;
+}
+
+.composer-shell .text-gray-500,
+.composer-shell .text-primary-600 {
+  color: rgb(255 255 255 / 0.58) !important;
+}
+
+.composer-shell .border-primary-300 {
+  border-color: rgb(255 255 255 / 0.14) !important;
+}
+
+.composer-shell .glass-chip,
+.composer-settings-summary {
+  border-color: rgb(255 255 255 / 0.11) !important;
+  background: rgb(255 255 255 / 0.055) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07) !important;
+}
+
+.composer-settings-summary:hover {
+  color: rgb(255 255 255 / 0.86) !important;
+  background: rgb(255 255 255 / 0.09) !important;
+}
+
+.composer-shell .primary-button {
+  width: 2.65rem;
+  height: 2.65rem;
+  border-radius: 999px !important;
+  background: rgb(255 255 255 / 0.88) !important;
+  color: #0b0b0d !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.65),
+    0 12px 32px rgb(0 0 0 / 0.24) !important;
+}
+
+.composer-shell .primary-button:hover:not(:disabled) {
+  background: #ffffff !important;
+}
+
+.composer-mode-tab {
+  border-color: rgb(255 255 255 / 0.10) !important;
+  background: rgb(255 255 255 / 0.08) !important;
+  color: rgb(255 255 255 / 0.58) !important;
+  padding: 0.48rem 0.82rem !important;
+  font-size: 10px !important;
+  line-height: 1 !important;
+  box-shadow: none !important;
+}
+
+.composer-mode-tab:hover {
+  color: rgb(255 255 255 / 0.84) !important;
+  transform: translateY(-1px);
+}
+
+.composer-mode-tab-active {
+  border-color: rgb(255 255 255 / 0.78) !important;
+  background: rgb(255 255 255 / 0.88) !important;
+  color: #0b0b0d !important;
+}
+
+.reference-slots,
+.keyframe-slots {
+  filter: drop-shadow(0 22px 24px rgb(0 0 0 / 0.34));
+}
+
+.reference-slot-card,
+.keyframe-slot-card {
+  border-radius: 1.12rem !important;
+  border-color: rgb(255 255 255 / 0.10) !important;
+  background:
+    radial-gradient(circle at 24% 8%, rgb(255 255 255 / 0.28), transparent 30%),
+    linear-gradient(180deg, rgb(255 255 255 / 0.22), rgb(255 255 255 / 0.08)),
+    rgb(42 42 42 / 0.66) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.16),
+    0 18px 44px rgb(0 0 0 / 0.34) !important;
+}
+
+.reference-slot-card {
+  transform: rotate(-2.8deg) translateY(0.2rem) !important;
+}
+
+.reference-slot-card-filled {
+  transform: rotate(-1.8deg) translateY(0.3rem) !important;
+}
+
+.keyframe-slot-card:nth-child(odd) {
+  transform: rotate(-2.8deg) translateY(0.2rem) !important;
+}
+
+.keyframe-slot-card:nth-child(even) {
+  transform: rotate(2.4deg) translateY(0.45rem) !important;
+}
+
+.reference-slot-card:hover,
+.reference-slot-card:focus-visible,
+.reference-slot-card-over,
+.keyframe-slot-card:hover,
+.keyframe-slot-card:focus-visible,
+.keyframe-slot-card-over {
+  border-color: rgb(255 255 255 / 0.24) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.22),
+    0 0 0 4px rgb(255 255 255 / 0.08),
+    0 24px 54px rgb(0 0 0 / 0.42) !important;
+}
+
+.reference-slot-scrim,
+.keyframe-slot-scrim {
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(0 0 0 / 0.22)),
+    linear-gradient(0deg, rgb(0 0 0 / 0.20), transparent 58%) !important;
+}
+
+.reference-tray-popover {
+  border-color: rgb(255 255 255 / 0.11) !important;
+  background:
+    linear-gradient(180deg, rgb(24 24 24 / 0.86), rgb(14 14 14 / 0.78)) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.10),
+    0 24px 70px rgb(0 0 0 / 0.42) !important;
+  color: rgb(255 255 255 / 0.86);
+}
+
+.reference-tray-popover .text-gray-800,
+.reference-tray-popover .text-gray-700 {
+  color: rgb(255 255 255 / 0.86) !important;
+}
+
+.reference-tray-popover .text-gray-400,
+.reference-tray-popover .text-gray-500 {
+  color: rgb(255 255 255 / 0.48) !important;
+}
+
+.composer-resize-handle {
+  right: 0.85rem !important;
+  bottom: 0.82rem !important;
+  opacity: 0.22;
+}
+
+.composer-resize-handle::before,
+.composer-resize-handle::after {
+  border-color: rgb(255 255 255 / 0.38) !important;
+}
+
+.composer-settings-popover {
+  transform-origin: bottom right;
+  border-radius: 1.65rem;
+  background: rgb(12 12 14 / 0.28);
+  filter: drop-shadow(0 32px 80px rgb(0 0 0 / 0.44));
+  backdrop-filter: blur(28px) saturate(112%);
+  -webkit-backdrop-filter: blur(28px) saturate(112%);
+}
+
+.model-settings-composer {
+  border-color: rgb(255 255 255 / 0.11) !important;
+  background:
+    radial-gradient(circle at 0% 0%, rgb(255 255 255 / 0.075), transparent 38%),
+    radial-gradient(circle at 100% 100%, rgb(20 83 45 / 0.12), transparent 45%),
+    linear-gradient(180deg, rgb(28 28 28 / 0.82), rgb(16 16 16 / 0.76)) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 30px 90px rgb(0 0 0 / 0.38) !important;
+  backdrop-filter: blur(28px) saturate(112%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(112%) !important;
+}
+
+.model-settings-composer .settings-mode-tabs > div {
+  display: flex !important;
+  gap: 1.35rem !important;
+}
+
+.model-settings-composer .settings-mode-tab {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  padding: 0.25rem 0 0.55rem !important;
+  color: rgb(255 255 255 / 0.48) !important;
+  font-size: 1rem !important;
+  font-weight: 800 !important;
+  line-height: 1.05 !important;
+  box-shadow: none !important;
+}
+
+.model-settings-composer .settings-mode-tab-active {
+  color: rgb(255 255 255 / 0.94) !important;
+  box-shadow: inset 0 -2px 0 rgb(255 255 255 / 0.92) !important;
+}
+
+.model-settings-composer label,
+.model-settings-composer .text-gray-500 {
+  color: rgb(255 255 255 / 0.48) !important;
+}
+
+.model-settings-composer .text-gray-800,
+.model-settings-composer .text-gray-700 {
+  color: rgb(255 255 255 / 0.88) !important;
+}
+
+.model-settings-composer .text-gray-400 {
+  color: rgb(255 255 255 / 0.42) !important;
+}
+
+.model-settings-composer .glass-control,
+.model-settings-composer .glass-chip,
+.model-settings-composer .param-segmented,
+.model-settings-composer .bg-surface-100,
+.model-settings-composer .ratio-picker {
+  border-color: rgb(255 255 255 / 0.08) !important;
+  background: rgb(255 255 255 / 0.065) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05) !important;
+}
+
+.model-settings-composer .param-choice-selected {
+  background: rgb(255 255 255 / 0.82) !important;
+  color: #0b0b0d !important;
+  box-shadow: none !important;
+}
+
+.model-settings-composer .param-option {
+  color: rgb(255 255 255 / 0.58);
+}
+
+.model-settings-composer .param-option:hover:not(:disabled) {
+  color: rgb(255 255 255 / 0.86);
+}
+
+.model-settings-composer select,
+.model-settings-composer input,
+.model-settings-composer button {
+  accent-color: rgb(255 255 255);
+}
+
+.model-settings-composer .range-control {
+  --range-track: rgb(255 255 255 / 0.10);
+  --range-fill: rgb(255 255 255 / 0.72);
+}
+
+@media (max-width: 760px) {
+  .composer-settings-popover {
+    left: 0;
+    right: 0;
+  }
+
+  .model-settings-composer {
+    width: min(100%, calc(100vw - 2rem)) !important;
+  }
+}
+
+html:not(.dark) .composer-shell,
+html.dark .composer-shell {
+  border-color: rgb(255 255 255 / 0.11) !important;
+  background:
+    radial-gradient(circle at 100% 100%, rgb(20 83 45 / 0.18), transparent 42%),
+    linear-gradient(180deg, rgb(25 25 25 / 0.72), rgb(14 14 14 / 0.62)) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 30px 90px rgb(0 0 0 / 0.38),
+    0 0 0 1px rgb(255 255 255 / 0.04) !important;
+}
+
+html:not(.dark) .composer-shell .glass-chip,
+html.dark .composer-shell .glass-chip,
+html:not(.dark) .composer-settings-summary,
+html.dark .composer-settings-summary {
+  border-color: rgb(255 255 255 / 0.11) !important;
+  background: rgb(255 255 255 / 0.055) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07) !important;
+}
+
+html:not(.dark) .model-settings-composer,
+html.dark .model-settings-composer {
+  border-color: rgb(255 255 255 / 0.11) !important;
+  background:
+    radial-gradient(circle at 0% 0%, rgb(255 255 255 / 0.075), transparent 38%),
+    radial-gradient(circle at 100% 100%, rgb(20 83 45 / 0.12), transparent 45%),
+    linear-gradient(180deg, rgb(28 28 28 / 0.82), rgb(16 16 16 / 0.76)) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 30px 90px rgb(0 0 0 / 0.38) !important;
+}
+
+html:not(.dark) .model-settings-composer .glass-control,
+html:not(.dark) .model-settings-composer .glass-chip,
+html:not(.dark) .model-settings-composer .param-segmented,
+html:not(.dark) .model-settings-composer .bg-surface-100,
+html:not(.dark) .model-settings-composer .ratio-picker,
+html.dark .model-settings-composer .glass-control,
+html.dark .model-settings-composer .glass-chip,
+html.dark .model-settings-composer .param-segmented,
+html.dark .model-settings-composer .bg-surface-100,
+html.dark .model-settings-composer .ratio-picker {
+  border-color: rgb(255 255 255 / 0.08) !important;
+  background: rgb(255 255 255 / 0.065) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05) !important;
+}
+
+/* Composer stabilization pass: neutral glass, no top mode pills, no green glow. */
+.composer-mode-tabs {
+  display: none !important;
+}
+
+html.dark .composer-shell {
+  border-color: rgb(255 255 255 / 0.12) !important;
+  background: linear-gradient(180deg, rgb(24 24 25 / 0.76), rgb(13 13 14 / 0.68)) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 30px 90px rgb(0 0 0 / 0.38),
+    0 0 0 1px rgb(255 255 255 / 0.04) !important;
+}
+
+html:not(.dark) .composer-shell {
+  border-color: rgb(15 23 42 / 0.10) !important;
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.86), rgb(255 255 255 / 0.72)) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.82),
+    0 30px 90px rgb(15 23 42 / 0.12),
+    0 0 0 1px rgb(255 255 255 / 0.62) !important;
+}
+
+html.dark .composer-shell .prompt-editor-shell {
+  border-color: rgb(255 255 255 / 0.10) !important;
+  background: rgb(255 255 255 / 0.035) !important;
+}
+
+html:not(.dark) .composer-shell .prompt-editor-shell {
+  border-color: rgb(15 23 42 / 0.10) !important;
+  background: rgb(255 255 255 / 0.56) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.74) !important;
+}
+
+html.dark .composer-shell .prompt-editor-textarea {
+  color: rgb(255 255 255 / 0.88) !important;
+}
+
+html:not(.dark) .composer-shell .prompt-editor-textarea {
+  color: rgb(15 23 42 / 0.86) !important;
+}
+
+html.dark .composer-shell .prompt-editor-textarea::placeholder {
+  color: rgb(255 255 255 / 0.36) !important;
+}
+
+html:not(.dark) .composer-shell .prompt-editor-textarea::placeholder {
+  color: rgb(15 23 42 / 0.44) !important;
+}
+
+html.dark .composer-shell .text-gray-300 {
+  color: rgb(255 255 255 / 0.22) !important;
+}
+
+html.dark .composer-shell .text-gray-400 {
+  color: rgb(255 255 255 / 0.44) !important;
+}
+
+html.dark .composer-shell .text-gray-500,
+html.dark .composer-shell .text-primary-600 {
+  color: rgb(255 255 255 / 0.58) !important;
+}
+
+html:not(.dark) .composer-shell .text-gray-300 {
+  color: rgb(15 23 42 / 0.22) !important;
+}
+
+html:not(.dark) .composer-shell .text-gray-400 {
+  color: rgb(15 23 42 / 0.48) !important;
+}
+
+html:not(.dark) .composer-shell .text-gray-500,
+html:not(.dark) .composer-shell .text-primary-600 {
+  color: rgb(15 23 42 / 0.62) !important;
+}
+
+html.dark .composer-shell .glass-chip,
+html.dark .composer-settings-summary {
+  border-color: rgb(255 255 255 / 0.12) !important;
+  background: rgb(255 255 255 / 0.055) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07) !important;
+}
+
+html:not(.dark) .composer-shell .glass-chip,
+html:not(.dark) .composer-settings-summary {
+  border-color: rgb(15 23 42 / 0.11) !important;
+  background: rgb(255 255 255 / 0.62) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.78) !important;
+}
+
+.composer-generate-button {
+  display: inline-flex !important;
+  width: 2.55rem !important;
+  height: 2.55rem !important;
+  min-width: 2.55rem !important;
+  padding: 0 !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 999px !important;
+  border: 1px solid transparent !important;
+}
+
+.composer-generate-button svg {
+  width: 1.05rem !important;
+  height: 1.05rem !important;
+}
+
+html.dark .composer-generate-button {
+  border-color: rgb(255 255 255 / 0.22) !important;
+  background: rgb(245 247 250 / 0.94) !important;
+  color: rgb(8 10 14) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.74),
+    0 14px 34px rgb(0 0 0 / 0.30) !important;
+}
+
+html:not(.dark) .composer-generate-button {
+  border-color: rgb(15 23 42 / 0.08) !important;
+  background: rgb(15 23 42 / 0.92) !important;
+  color: #ffffff !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.16),
+    0 14px 34px rgb(15 23 42 / 0.16) !important;
+}
+
+.composer-generate-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.composer-resize-handle-hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.composer-resize-handle-visible {
+  opacity: 0.28;
+}
+
+.composer-resize-handle-visible:hover,
+.composer-resize-handle-active {
+  opacity: 0.82 !important;
+}
+
+html.dark .composer-resize-handle::before,
+html.dark .composer-resize-handle::after {
+  border-color: rgb(255 255 255 / 0.36) !important;
+}
+
+html:not(.dark) .composer-resize-handle::before,
+html:not(.dark) .composer-resize-handle::after {
+  border-color: rgb(15 23 42 / 0.30) !important;
+}
+
+html.dark .model-settings-composer {
+  border-color: rgb(255 255 255 / 0.12) !important;
+  background:
+    linear-gradient(180deg, rgb(28 28 29 / 0.92), rgb(16 16 17 / 0.88)),
+    rgb(12 12 14 / 0.88) !important;
+  backdrop-filter: blur(34px) saturate(118%) !important;
+  -webkit-backdrop-filter: blur(34px) saturate(118%) !important;
+}
+
+html:not(.dark) .model-settings-composer {
+  border-color: rgb(15 23 42 / 0.11) !important;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.94), rgb(248 250 252 / 0.88)),
+    rgb(255 255 255 / 0.86) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.86),
+    0 30px 90px rgb(15 23 42 / 0.16) !important;
+  backdrop-filter: blur(34px) saturate(118%) !important;
+  -webkit-backdrop-filter: blur(34px) saturate(118%) !important;
+}
+
+html:not(.dark) .model-settings-composer .settings-mode-tab {
+  color: rgb(15 23 42 / 0.50) !important;
+}
+
+html:not(.dark) .model-settings-composer .settings-mode-tab-active {
+  color: rgb(15 23 42 / 0.92) !important;
+  box-shadow: inset 0 -2px 0 rgb(15 23 42 / 0.82) !important;
+}
+
+html:not(.dark) .model-settings-composer label,
+html:not(.dark) .model-settings-composer .text-gray-500 {
+  color: rgb(15 23 42 / 0.56) !important;
+}
+
+html:not(.dark) .model-settings-composer .text-gray-800,
+html:not(.dark) .model-settings-composer .text-gray-700 {
+  color: rgb(15 23 42 / 0.88) !important;
+}
+
+html:not(.dark) .model-settings-composer .text-gray-400 {
+  color: rgb(15 23 42 / 0.44) !important;
+}
+
+html:not(.dark) .model-settings-composer .glass-control,
+html:not(.dark) .model-settings-composer .glass-chip,
+html:not(.dark) .model-settings-composer .param-segmented,
+html:not(.dark) .model-settings-composer .bg-surface-100,
+html:not(.dark) .model-settings-composer .ratio-picker {
+  border-color: rgb(15 23 42 / 0.09) !important;
+  background: rgb(255 255 255 / 0.64) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.76) !important;
+}
+
+html:not(.dark) .model-settings-composer .param-choice-selected {
+  background: rgb(15 23 42 / 0.90) !important;
+  color: #ffffff !important;
+}
+
+/* Reference slot refresh: square tiles, direct file attach, compact URL/asset input. */
+.reference-slots,
+.keyframe-slots {
+  align-items: center !important;
+  filter: drop-shadow(0 20px 34px rgb(0 0 0 / 0.20));
+}
+
+.reference-slot-card,
+.keyframe-slot-card {
+  width: 6rem !important;
+  height: 6rem !important;
+  border-radius: 1.35rem !important;
+  transform: none !important;
+  transform-origin: center !important;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    background 180ms ease !important;
+  will-change: transform;
+}
+
+.reference-slot-card:hover,
+.reference-slot-card:focus-visible,
+.reference-slot-card-over,
+.keyframe-slot-card:hover,
+.keyframe-slot-card:focus-visible,
+.keyframe-slot-card-over {
+  transform: translateY(-4px) !important;
+}
+
+.keyframe-slot-card:nth-child(odd),
+.keyframe-slot-card:nth-child(even),
+.reference-slot-card-filled {
+  transform: none !important;
+}
+
+.keyframe-slot-card:nth-child(odd):hover,
+.keyframe-slot-card:nth-child(even):hover,
+.reference-slot-card-filled:hover {
+  transform: translateY(-4px) !important;
+}
+
+html.dark .reference-slot-card,
+html.dark .keyframe-slot-card {
+  border-color: rgb(255 255 255 / 0.12) !important;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.13), rgb(255 255 255 / 0.055)),
+    rgb(22 22 23 / 0.78) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.12),
+    0 16px 42px rgb(0 0 0 / 0.26) !important;
+}
+
+html:not(.dark) .reference-slot-card,
+html:not(.dark) .keyframe-slot-card {
+  border-color: rgb(15 23 42 / 0.10) !important;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.92), rgb(255 255 255 / 0.66)),
+    rgb(255 255 255 / 0.70) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.84),
+    0 16px 42px rgb(15 23 42 / 0.12) !important;
+}
+
+.reference-slot-scrim,
+.keyframe-slot-scrim {
+  background:
+    radial-gradient(circle at 50% 20%, rgb(255 255 255 / 0.12), transparent 38%),
+    linear-gradient(180deg, rgb(255 255 255 / 0.04), rgb(0 0 0 / 0.10)) !important;
+}
+
+.reference-external-slot {
+  border-style: dashed !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html.dark .reference-external-slot {
+  color: rgb(255 255 255 / 0.62);
+  border-color: rgb(255 255 255 / 0.22) !important;
+}
+
+html:not(.dark) .reference-external-slot {
+  color: rgb(15 23 42 / 0.58);
+  border-color: rgb(15 23 42 / 0.22) !important;
+}
+
+html.dark .reference-external-slot:hover,
+html.dark .reference-external-slot:focus-visible {
+  color: rgb(255 255 255 / 0.86);
+  background: rgb(255 255 255 / 0.045) !important;
+}
+
+html:not(.dark) .reference-external-slot:hover,
+html:not(.dark) .reference-external-slot:focus-visible {
+  color: rgb(15 23 42 / 0.86);
+  background: rgb(255 255 255 / 0.46) !important;
+}
+
+.reference-external-popover {
+  backdrop-filter: blur(22px) saturate(112%);
+  -webkit-backdrop-filter: blur(22px) saturate(112%);
+}
+
+html.dark .reference-external-popover {
+  border-color: rgb(255 255 255 / 0.12);
+  background: linear-gradient(180deg, rgb(24 24 25 / 0.88), rgb(14 14 15 / 0.82));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.10),
+    0 22px 60px rgb(0 0 0 / 0.34);
+  color: rgb(255 255 255 / 0.88);
+}
+
+html:not(.dark) .reference-external-popover {
+  border-color: rgb(15 23 42 / 0.10);
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.92), rgb(248 250 252 / 0.84));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.80),
+    0 22px 60px rgb(15 23 42 / 0.14);
+  color: rgb(15 23 42 / 0.86);
+}
+
+.reference-external-input {
+  min-height: 2.35rem;
+}
+
+html.dark .reference-external-input {
+  border-color: rgb(255 255 255 / 0.12);
+  background: rgb(255 255 255 / 0.055);
+  color: rgb(255 255 255 / 0.88);
+}
+
+html:not(.dark) .reference-external-input {
+  border-color: rgb(15 23 42 / 0.11);
+  background: rgb(255 255 255 / 0.70);
+  color: rgb(15 23 42 / 0.88);
+}
+
+.reference-external-submit {
+  min-width: 3.25rem;
+}
+
+html.dark .reference-external-submit {
+  background: rgb(255 255 255 / 0.86);
+  color: rgb(8 10 14);
+}
+
+html:not(.dark) .reference-external-submit {
+  background: rgb(15 23 42 / 0.90);
+  color: #ffffff;
+}
+
+.reference-external-close {
+  color: inherit;
+  background: rgb(127 127 127 / 0.10);
+}
+
+@media (max-width: 720px) {
+  .reference-external-popover {
+    left: 0 !important;
+    bottom: calc(100% + 0.75rem) !important;
+    width: min(calc(100vw - 2rem), 22rem) !important;
+  }
+}
+
+.reference-slot-plus,
+.keyframe-slot-plus {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18);
+  transform: translateY(-0.35rem);
+}
+
+html.dark .reference-slot-plus,
+html.dark .keyframe-slot-plus {
+  color: rgb(255 255 255 / 0.92) !important;
+  background: rgb(255 255 255 / 0.10) !important;
+}
+
+html:not(.dark) .reference-slot-plus,
+html:not(.dark) .keyframe-slot-plus {
+  color: rgb(15 23 42 / 0.78) !important;
+  background: rgb(15 23 42 / 0.055) !important;
+}
+
+html.dark .reference-slot-label {
+  color: rgb(255 255 255 / 0.82) !important;
+}
+
+html:not(.dark) .reference-slot-label {
+  color: rgb(15 23 42 / 0.84) !important;
+}
+
+.composer-shell [data-prompt-editor-region] {
+  cursor: grab;
+}
+
+.composer-shell [data-prompt-editor-region]:active {
+  cursor: grabbing;
+}
+
+.composer-shell .prompt-editor-textarea {
+  cursor: text;
+}
+
+.app-settings-menu {
+  border-color: rgb(15 23 42 / 0.10);
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.92), rgb(248 250 252 / 0.82));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.82),
+    0 24px 70px rgb(15 23 42 / 0.14);
+  backdrop-filter: blur(22px) saturate(112%);
+  -webkit-backdrop-filter: blur(22px) saturate(112%);
+}
+
+html.dark .app-settings-menu {
+  border-color: rgb(255 255 255 / 0.12);
+  background: linear-gradient(180deg, rgb(25 25 26 / 0.90), rgb(13 13 14 / 0.84));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.10),
+    0 24px 70px rgb(0 0 0 / 0.34);
+}
+
+.app-settings-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.65rem;
+  border-radius: 0.85rem;
+  padding: 0.68rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: rgb(15 23 42 / 0.68);
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.app-settings-item:hover {
+  background: rgb(15 23 42 / 0.055);
+  color: rgb(15 23 42 / 0.92);
+  transform: translateY(-1px);
+}
+
+html.dark .app-settings-item {
+  color: rgb(255 255 255 / 0.62);
+}
+
+html.dark .app-settings-item:hover {
+  background: rgb(255 255 255 / 0.07);
+  color: rgb(255 255 255 / 0.90);
+}
+
+.app-settings-switch {
+  position: relative;
+  width: 2.05rem;
+  height: 1.12rem;
+  border-radius: 999px;
+  background: rgb(148 163 184 / 0.35);
+  transition: background 180ms ease;
+}
+
+.app-settings-switch::after {
+  content: "";
+  position: absolute;
+  top: 0.18rem;
+  left: 0.2rem;
+  width: 0.76rem;
+  height: 0.76rem;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgb(15 23 42 / 0.20);
+  transition: transform 180ms ease;
+}
+
+.app-settings-switch-on {
+  background: rgb(37 99 235 / 0.75);
+}
+
+.app-settings-switch-on::after {
+  transform: translateX(0.88rem);
+}
+
+.free-board {
+  width: 100%;
+  overflow: visible;
+}
+
+.results-toolbar {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 48;
+  margin-top: 0;
+  min-height: 2.25rem;
+}
+
+.results-task-count {
+  position: fixed;
+  top: 4.25rem;
+  left: 1rem;
+  z-index: 44;
+  display: inline-flex;
+  min-height: 1.8rem;
+  align-items: center;
+  border-radius: 0.75rem;
+  padding: 0.35rem 0.65rem;
+  color: rgb(107 114 128 / 0.88);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.task-action-split {
+  width: 2.1rem;
+  overflow: hidden;
+  color: rgb(156 163 175);
+  transition:
+    width 260ms cubic-bezier(0.2, 0.9, 0.18, 1.04),
+    color 160ms ease,
+    background 160ms ease;
+}
+
+.task-action-split-open {
+  width: 13.65rem;
+}
+
+.task-action-split-button {
+  display: inline-flex;
+  height: 1.85rem;
+  width: 1.85rem;
+  flex: 0 0 1.85rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.45rem;
+  color: inherit;
+  transition:
+    color 160ms ease,
+    background 160ms ease,
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.task-action-split-button:hover {
+  color: rgb(31 41 55);
+  background: rgb(255 255 255 / 0.62);
+  transform: translateY(-1px);
+}
+
+.task-action-split-open .task-action-split-button {
+  animation: task-action-cell-split 220ms cubic-bezier(0.2, 0.9, 0.18, 1.12) both;
+}
+
+.task-action-split-open .task-action-split-button:last-child,
+.task-action-split-open .task-action-split-text-button:last-child {
+  animation-delay: 35ms;
+}
+
+.task-action-split-text-button {
+  display: inline-flex;
+  height: 1.85rem;
+  min-width: 4.6rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.45rem;
+  padding: 0 0.62rem;
+  color: inherit;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  white-space: nowrap;
+  transition:
+    color 160ms ease,
+    background 160ms ease,
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 160ms ease;
+}
+
+.task-action-split-text-button:hover {
+  color: rgb(31 41 55);
+  background: rgb(255 255 255 / 0.62);
+  transform: translateY(-1px);
+}
+
+.task-action-split-text-button:disabled {
+  cursor: default;
+  opacity: 0.48;
+  transform: none;
+}
+
+.task-action-split-open .task-action-split-text-button {
+  animation: task-action-cell-split 220ms cubic-bezier(0.2, 0.9, 0.18, 1.12) both;
+}
+
+.task-action-split-divider {
+  width: 1px;
+  height: 1rem;
+  flex: 0 0 1px;
+  background: rgb(148 163 184 / 0.28);
+}
+
+.task-action-split-selected {
+  color: rgb(37 99 235);
+  background: rgb(37 99 235 / 0.10);
+}
+
+.task-action-split-danger:hover {
+  color: rgb(220 38 38);
+  background: rgb(254 242 242 / 0.78);
+}
+
+.task-action-split-confirm,
+.task-action-split-confirm:hover {
+  color: rgb(220 38 38);
+  background: rgb(254 242 242 / 0.86);
+}
+
+html.dark .task-action-split-button:hover {
+  color: rgb(255 255 255 / 0.88);
+  background: rgb(255 255 255 / 0.09);
+}
+
+html.dark .task-action-split-text-button:hover {
+  color: rgb(255 255 255 / 0.88);
+  background: rgb(255 255 255 / 0.09);
+}
+
+html.dark .task-action-split-selected {
+  color: rgb(147 197 253);
+  background: rgb(59 130 246 / 0.15);
+}
+
+html.dark .task-action-split-danger:hover {
+  color: rgb(248 113 113);
+  background: rgb(127 29 29 / 0.24);
+}
+
+html.dark .task-action-split-confirm,
+html.dark .task-action-split-confirm:hover {
+  color: rgb(248 113 113);
+  background: rgb(127 29 29 / 0.28);
+}
+
+@keyframes task-action-cell-split {
+  from {
+    opacity: 0;
+    transform: translateX(-0.3rem) scale(0.82);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.free-board::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.16;
+  background:
+    linear-gradient(rgb(15 23 42 / 0.10) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(15 23 42 / 0.10) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: linear-gradient(to bottom, transparent, black 8%, black 88%, transparent);
+}
+
+html.dark .free-board::before {
+  opacity: 0.14;
+  background:
+    linear-gradient(rgb(255 255 255 / 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.12) 1px, transparent 1px);
+  background-size: 64px 64px;
+}
+
+.task-frame {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate3d(var(--task-x), var(--task-y), 0);
+  cursor: grab;
+  transition:
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 160ms ease,
+    height 160ms ease,
+    filter 160ms ease;
+  will-change: transform, width, height;
+}
+
+.task-frame-active {
+  z-index: 30;
+  cursor: grabbing;
+  filter: drop-shadow(0 24px 52px rgb(15 23 42 / 0.20));
+  transition: filter 120ms ease;
+}
+
+html.dark .task-frame-active {
+  filter: drop-shadow(0 24px 52px rgb(0 0 0 / 0.36));
+}
+
+.task-frame .task-card {
+  height: 100%;
+  isolation: isolate;
+  transform: translateZ(0);
+  backdrop-filter: blur(24px) saturate(118%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(118%) !important;
+}
+
+.task-card-media {
+  flex: 1 1 auto;
+  min-height: 180px;
+  aspect-ratio: 16 / 9;
+}
+
+.task-list-board {
+  padding-inline: 0.25rem;
+}
+
+.task-list-board > .task-card {
+  width: min(100%, 56rem);
+  margin-inline: auto;
+  cursor: default;
+  transition:
+    width 360ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-radius 220ms ease,
+    box-shadow 220ms ease;
+}
+
+.task-list-board > .task-card-expanded {
+  width: min(100%, 76rem);
+  border-radius: 1.75rem;
+}
+
+.task-card-selectable {
+  cursor: pointer !important;
+}
+
+.task-card-selected {
+  border-color: rgb(37 99 235 / 0.42) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.70),
+    0 0 0 1px rgb(37 99 235 / 0.14),
+    0 22px 70px rgb(37 99 235 / 0.12) !important;
+}
+
+.task-select-check {
+  position: absolute;
+  top: 0.72rem;
+  left: 0.72rem;
+  z-index: 15;
+  display: inline-flex;
+  width: 1.85rem;
+  height: 1.85rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgb(15 23 42 / 0.12);
+  border-radius: 0.65rem;
+  color: transparent;
+  background: rgb(255 255 255 / 0.52);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.72),
+    0 10px 24px rgb(15 23 42 / 0.10);
+  backdrop-filter: blur(16px) saturate(112%);
+  -webkit-backdrop-filter: blur(16px) saturate(112%);
+  transition:
+    transform 160ms ease,
+    color 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease;
+}
+
+.task-select-check::after {
+  content: "";
+  width: 0.58rem;
+  height: 0.58rem;
+  border: 1px solid rgb(75 85 99 / 0.52);
+  border-radius: 999px;
+}
+
+.task-select-check[aria-pressed="true"] {
+  color: #ffffff;
+  border-color: transparent;
+  background: rgb(37 99 235 / 0.90);
+}
+
+.task-select-check[aria-pressed="true"]::after {
+  display: none;
+}
+
+.task-select-check:hover {
+  transform: translateY(-1px);
+}
+
+.task-card-expanded .task-card-media {
+  min-height: min(62vh, 620px);
+}
+
+.task-card-expanded .task-card-body {
+  min-height: 6.5rem;
+}
+
+.task-card-media-generating,
+.task-card-media-status {
+  background:
+    linear-gradient(180deg, rgb(248 250 252 / 0.82), rgb(241 245 249 / 0.66)),
+    rgb(248 250 252 / 0.58);
+}
+
+html.dark .task-card-media-generating,
+html.dark .task-card-media-status {
+  background:
+    linear-gradient(180deg, rgb(17 24 39 / 0.72), rgb(3 7 18 / 0.82)),
+    rgb(3 7 18 / 0.72);
+}
+
+.generation-shader-fx {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: rgb(246 248 252);
+}
+
+.generation-shader-canvas,
+.generation-shader-fallback,
+.generation-shader-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.generation-shader-canvas {
+  display: block;
+}
+
+.generation-shader-fallback {
+  background:
+    radial-gradient(circle at 36% 38%, rgb(96 165 250 / 0.18), transparent 28%),
+    radial-gradient(circle at 64% 58%, rgb(15 23 42 / 0.08), transparent 30%),
+    linear-gradient(180deg, rgb(248 250 252), rgb(241 245 249));
+  animation: shader-fallback-breathe 3.6s ease-in-out infinite;
+}
+
+.generation-shader-overlay {
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at center, transparent 0%, rgb(255 255 255 / 0.20) 64%, rgb(255 255 255 / 0.34) 100%),
+    linear-gradient(180deg, transparent, rgb(255 255 255 / 0.16));
+}
+
+.generation-shader-copy {
+  position: relative;
+  z-index: 2;
+  padding: 0.78rem 1rem;
+  border-radius: 999px;
+  border: 1px solid rgb(15 23 42 / 0.08);
+  background: rgb(255 255 255 / 0.36);
+  color: rgb(15 23 42 / 0.72) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.62),
+    0 18px 50px rgb(15 23 42 / 0.08);
+  backdrop-filter: blur(18px) saturate(128%);
+  -webkit-backdrop-filter: blur(18px) saturate(128%);
+}
+
+.generation-shader-copy span + span {
+  color: rgb(15 23 42 / 0.42) !important;
+}
+
+.generation-status-pill {
+  width: 2.2rem;
+  height: 0.16rem;
+  margin-bottom: 0.1rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgb(37 99 235 / 0.82), transparent);
+  animation: generation-status-breathe 1.85s ease-in-out infinite;
+}
+
+html.dark .generation-shader-fx {
+  background: rgb(4 6 10);
+}
+
+html.dark .generation-shader-overlay {
+  background:
+    radial-gradient(ellipse at center, transparent 0%, rgb(0 0 0 / 0.12) 58%, rgb(0 0 0 / 0.38) 100%),
+    linear-gradient(180deg, rgb(255 255 255 / 0.02), rgb(0 0 0 / 0.18));
+}
+
+html.dark .generation-shader-copy {
+  border-color: rgb(255 255 255 / 0.09);
+  background: rgb(3 7 18 / 0.32);
+  color: rgb(226 232 240 / 0.84) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    0 20px 58px rgb(0 0 0 / 0.36);
+}
+
+html.dark .generation-shader-copy span + span {
+  color: rgb(226 232 240 / 0.46) !important;
+}
+
+html.dark .generation-status-pill {
+  background: linear-gradient(90deg, transparent, rgb(147 197 253 / 0.86), transparent);
+}
+
+@keyframes generation-status-breathe {
+  0%,
+  100% {
+    opacity: 0.34;
+    transform: scaleX(0.74);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes shader-fallback-breathe {
+  0%,
+  100% {
+    filter: saturate(0.92) brightness(1);
+  }
+  50% {
+    filter: saturate(1.08) brightness(1.03);
+  }
+}
+
+.task-card-body {
+  min-height: 5.25rem;
+  transition: background 160ms ease;
+}
+
+.task-card-body:hover {
+  background: rgb(255 255 255 / 0.20);
+}
+
+.task-card-actions {
+  min-width: max-content;
+}
+
+.task-card-detail-floating {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 12;
+  border-color: transparent !important;
+  background: rgb(255 255 255 / 0.32) !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(16px) saturate(112%);
+  -webkit-backdrop-filter: blur(16px) saturate(112%);
+}
+
+.task-icon-button {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgb(15 23 42 / 0.10);
+  border-radius: 0.75rem;
+  color: rgb(75 85 99 / 0.86);
+  background: rgb(255 255 255 / 0.48);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.64),
+    0 8px 20px rgb(15 23 42 / 0.06);
+  transition:
+    transform 160ms ease,
+    color 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.task-icon-button:hover {
+  color: rgb(17 24 39 / 0.92);
+  background: rgb(255 255 255 / 0.78);
+  transform: translateY(-1px);
+}
+
+.task-icon-button-primary {
+  color: white;
+  border-color: transparent !important;
+  background: rgb(17 24 39 / 0.96);
+  box-shadow: none !important;
+}
+
+.task-icon-button-primary:hover {
+  color: white;
+  background: rgb(15 23 42);
+  box-shadow: none;
+}
+
+.task-icon-button-success {
+  color: rgb(22 101 52);
+  border-color: rgb(34 197 94 / 0.24);
+  background: rgb(240 253 244 / 0.78);
+}
+
+.task-context-menu {
+  position: absolute;
+  z-index: 24;
+  min-width: 7.5rem;
+  overflow: hidden;
+  border: 1px solid rgb(15 23 42 / 0.12);
+  border-radius: 0.9rem;
+  background: rgb(255 255 255 / 0.86);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.78),
+    0 18px 44px rgb(15 23 42 / 0.18);
+  backdrop-filter: blur(18px) saturate(112%);
+  -webkit-backdrop-filter: blur(18px) saturate(112%);
+}
+
+.task-context-menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.58rem 0.72rem;
+  color: rgb(220 38 38 / 0.90);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: left;
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.task-context-menu-item:hover {
+  color: rgb(185 28 28);
+  background: rgb(254 242 242 / 0.78);
+}
+
+.task-detail-button {
+  border-color: rgb(15 23 42 / 0.10);
+  background: rgb(255 255 255 / 0.44);
+}
+
+.task-detail-button:hover {
+  background: rgb(255 255 255 / 0.72);
+}
+
+.task-modal-close {
+  position: absolute !important;
+  top: 0.75rem !important;
+  right: 0.75rem !important;
+  left: auto !important;
+  z-index: 20 !important;
+  width: 2.25rem !important;
+  height: 2.25rem !important;
+  border-color: rgb(15 23 42 / 0.10);
+  background: rgb(255 255 255 / 0.74);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.72),
+    0 14px 32px rgb(15 23 42 / 0.12);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.task-detail-overlay {
+  background: rgb(15 23 42 / 0.48);
+  backdrop-filter: blur(18px) saturate(108%);
+  -webkit-backdrop-filter: blur(18px) saturate(108%);
+}
+
+.task-detail-shell {
+  border: 1px solid rgb(255 255 255 / 0.52);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.88), rgb(246 248 251 / 0.78)),
+    rgb(255 255 255 / 0.72);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.80),
+    0 34px 110px rgb(15 23 42 / 0.28);
+  backdrop-filter: blur(30px) saturate(116%);
+  -webkit-backdrop-filter: blur(30px) saturate(116%);
+  isolation: isolate;
+}
+
+.task-detail-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(rgb(15 23 42 / 0.026) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(15 23 42 / 0.022) 1px, transparent 1px);
+  background-size: 28px 28px;
+  opacity: 0.36;
+  mask-image: linear-gradient(to bottom, black, transparent 82%);
+}
+
+.task-detail-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+.task-detail-video-pane {
+  background: #050505;
+}
+
+.task-detail-side {
+  border-left: 1px solid rgb(15 23 42 / 0.08);
+  background: rgb(255 255 255 / 0.74);
+  backdrop-filter: blur(24px) saturate(112%);
+  -webkit-backdrop-filter: blur(24px) saturate(112%);
+}
+
+.task-detail-section {
+  border-bottom: 1px solid rgb(15 23 42 / 0.08);
+}
+
+.task-detail-header {
+  padding-right: 4.75rem !important;
+}
+
+.task-detail-status {
+  display: inline-flex;
+  max-width: 5.8rem;
+  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-detail-prompt-card {
+  border: 1px solid rgb(15 23 42 / 0.10);
+  color: rgb(31 41 55 / 0.88);
+  background: rgb(255 255 255 / 0.70);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.70),
+    0 10px 26px rgb(15 23 42 / 0.06);
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.task-detail-prompt-card:hover {
+  border-color: rgb(15 23 42 / 0.18);
+  background: rgb(255 255 255 / 0.88);
+  transform: translateY(-1px);
+}
+
+.task-detail-prompt-copied {
+  border-color: rgb(34 197 94 / 0.30);
+  background: rgb(240 253 244 / 0.82);
+}
+
+.task-detail-actions {
+  background: rgb(255 255 255 / 0.34);
+}
+
+.task-detail-action-button {
+  display: inline-flex;
+  width: 2.65rem;
+  height: 2.65rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgb(15 23 42 / 0.10);
+  border-radius: 0.95rem;
+  color: rgb(75 85 99 / 0.90);
+  background: rgb(255 255 255 / 0.58);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.70),
+    0 10px 28px rgb(15 23 42 / 0.08);
+  transition:
+    transform 160ms ease,
+    color 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease;
+}
+
+.task-detail-action-button:hover {
+  color: rgb(17 24 39 / 0.94);
+  background: rgb(255 255 255 / 0.86);
+  transform: translateY(-1px);
+}
+
+.task-detail-action-primary {
+  color: #ffffff;
+  border-color: transparent !important;
+  background: rgb(17 24 39 / 0.95);
+  box-shadow: none !important;
+}
+
+.task-detail-action-primary:hover {
+  color: #ffffff;
+  background: rgb(15 23 42);
+}
+
+.task-detail-action-success {
+  color: rgb(22 101 52);
+  border-color: rgb(34 197 94 / 0.24);
+  background: rgb(240 253 244 / 0.82);
+}
+
+.task-detail-action-danger {
+  color: rgb(156 163 175);
+}
+
+.task-detail-action-danger:hover {
+  color: rgb(220 38 38);
+  border-color: rgb(248 113 113 / 0.28);
+  background: rgb(254 242 242 / 0.72);
+}
+
+html.dark .task-detail-button {
+  border-color: rgb(255 255 255 / 0.10);
+  background: rgb(255 255 255 / 0.06);
+}
+
+html.dark .task-card-detail-floating {
+  border-color: transparent !important;
+  background: rgb(16 16 18 / 0.34) !important;
+  box-shadow: none !important;
+}
+
+html.dark .task-card-selected {
+  border-color: rgb(147 197 253 / 0.42) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 0 0 1px rgb(147 197 253 / 0.16),
+    0 22px 70px rgb(37 99 235 / 0.16) !important;
+}
+
+html.dark .task-select-check {
+  border-color: rgb(255 255 255 / 0.12);
+  background: rgb(15 23 42 / 0.46);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.07),
+    0 10px 24px rgb(0 0 0 / 0.24);
+}
+
+html.dark .task-select-check::after {
+  border-color: rgb(226 232 240 / 0.52);
+}
+
+html.dark .task-select-check[aria-pressed="true"] {
+  color: rgb(15 23 42);
+  background: rgb(191 219 254 / 0.92);
+}
+
+html.dark .task-icon-button {
+  border-color: rgb(255 255 255 / 0.10);
+  color: rgb(255 255 255 / 0.66);
+  background: rgb(255 255 255 / 0.06);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.07),
+    0 10px 24px rgb(0 0 0 / 0.22);
+}
+
+html.dark .task-icon-button:hover {
+  color: rgb(255 255 255 / 0.92);
+  background: rgb(255 255 255 / 0.10);
+}
+
+html.dark .task-icon-button-primary {
+  color: rgb(15 23 42);
+  border-color: transparent;
+  background: rgb(255 255 255 / 0.90);
+  box-shadow: none;
+}
+
+html.dark .task-icon-button-success {
+  color: rgb(134 239 172);
+  border-color: rgb(34 197 94 / 0.26);
+  background: rgb(34 197 94 / 0.12);
+}
+
+html.dark .task-context-menu {
+  border-color: rgb(255 255 255 / 0.12);
+  background: rgb(20 20 22 / 0.88);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 18px 44px rgb(0 0 0 / 0.38);
+}
+
+html.dark .task-context-menu-item {
+  color: rgb(252 165 165);
+}
+
+html.dark .task-context-menu-item:hover {
+  color: rgb(254 202 202);
+  background: rgb(127 29 29 / 0.22);
+}
+
+html.dark .task-detail-button:hover {
+  background: rgb(255 255 255 / 0.10);
+  color: rgb(255 255 255 / 0.86);
+}
+
+html.dark .task-modal-close {
+  border-color: rgb(255 255 255 / 0.12);
+  background: rgb(18 18 20 / 0.78);
+  color: rgb(255 255 255 / 0.62);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.10),
+    0 16px 36px rgb(0 0 0 / 0.34);
+}
+
+html.dark .task-modal-close:hover {
+  color: rgb(255 255 255 / 0.92);
+}
+
+html.dark .task-detail-overlay {
+  background: rgb(0 0 0 / 0.62);
+}
+
+html.dark .task-detail-shell {
+  border-color: rgb(255 255 255 / 0.12);
+  background:
+    linear-gradient(180deg, rgb(23 23 25 / 0.92), rgb(9 9 11 / 0.86)),
+    rgb(12 12 14 / 0.82);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.10),
+    0 34px 110px rgb(0 0 0 / 0.52);
+}
+
+html.dark .task-detail-shell::before {
+  background:
+    linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.030) 1px, transparent 1px);
+  opacity: 0.30;
+}
+
+html.dark .task-detail-side {
+  border-left-color: rgb(255 255 255 / 0.10);
+  background: rgb(12 12 14 / 0.72);
+}
+
+html.dark .task-detail-section {
+  border-bottom-color: rgb(255 255 255 / 0.10);
+}
+
+html.dark .task-detail-prompt-card {
+  border-color: rgb(255 255 255 / 0.10);
+  color: rgb(255 255 255 / 0.84);
+  background: rgb(255 255 255 / 0.07);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    0 12px 30px rgb(0 0 0 / 0.24);
+}
+
+html.dark .task-detail-prompt-card:hover {
+  border-color: rgb(255 255 255 / 0.18);
+  background: rgb(255 255 255 / 0.10);
+}
+
+html.dark .task-detail-prompt-copied {
+  border-color: rgb(34 197 94 / 0.30);
+  background: rgb(34 197 94 / 0.12);
+}
+
+html.dark .task-detail-actions {
+  background: rgb(255 255 255 / 0.035);
+}
+
+html.dark .task-detail-action-button {
+  border-color: rgb(255 255 255 / 0.10);
+  color: rgb(255 255 255 / 0.66);
+  background: rgb(255 255 255 / 0.06);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.07),
+    0 12px 30px rgb(0 0 0 / 0.24);
+}
+
+html.dark .task-detail-action-button:hover {
+  color: rgb(255 255 255 / 0.92);
+  background: rgb(255 255 255 / 0.10);
+}
+
+html.dark .task-detail-action-primary {
+  color: rgb(15 23 42);
+  border-color: transparent !important;
+  background: rgb(255 255 255 / 0.90);
+  box-shadow: none !important;
+}
+
+html.dark .task-detail-action-danger:hover {
+  color: rgb(254 202 202);
+  border-color: rgb(248 113 113 / 0.24);
+  background: rgb(127 29 29 / 0.22);
+}
+
+html.dark .task-detail-action-success {
+  color: rgb(134 239 172);
+  border-color: rgb(34 197 94 / 0.28);
+  background: rgb(34 197 94 / 0.13);
+}
+
+.floating-status-badge {
+  line-height: 1;
+}
+
+.composer-resize-handle {
+  left: 0.8rem !important;
+  right: auto !important;
+  bottom: 0.8rem !important;
+  width: 0.72rem !important;
+  height: 0.72rem !important;
+  cursor: nesw-resize;
+  opacity: 0.32;
+}
+
+.composer-resize-handle::before,
+.composer-resize-handle::after {
+  border-right: 0 !important;
+  border-left: 1.5px solid rgb(15 23 42 / 0.34);
+  border-bottom: 1.5px solid rgb(15 23 42 / 0.34);
+  border-radius: 0 0 0 3px;
+}
+
+.composer-resize-handle::before {
+  inset: 1px 1px 1px 0 !important;
+}
+
+.composer-resize-handle::after {
+  display: none !important;
+}
+
+html.dark .composer-resize-handle::before,
+html.dark .composer-resize-handle::after {
+  border-left-color: rgb(255 255 255 / 0.42);
+  border-bottom-color: rgb(255 255 255 / 0.42);
+}
+
+.composer-dock {
+  --slot-scale: 1;
+  --slot-opacity: 1;
+}
+
+.composer-dock-collapsed {
+  --slot-scale: 0.56;
+  --slot-opacity: 0.36;
+}
+
+.composer-dock-collapsed .reference-slots,
+.composer-dock-collapsed .keyframe-slots {
+  transform: scale(var(--slot-scale));
+  transform-origin: left bottom;
+  opacity: var(--slot-opacity);
+  filter: drop-shadow(0 12px 20px rgb(15 23 42 / 0.12));
+  transition:
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease,
+    filter 180ms ease;
+}
+
+.composer-dock-collapsed .reference-slots:hover,
+.composer-dock-collapsed .reference-slots:focus-within,
+.composer-dock-collapsed .keyframe-slots:hover,
+.composer-dock-collapsed .keyframe-slots:focus-within {
+  transform: scale(1);
+  opacity: 1;
+  filter: drop-shadow(0 20px 34px rgb(0 0 0 / 0.22));
+}
+
+.composer-dock-collapsed .reference-slot-card,
+.composer-dock-collapsed .keyframe-slot-card {
+  opacity: 0.86;
+}
+
+.composer-dock-collapsed .reference-slots:hover .reference-slot-card,
+.composer-dock-collapsed .reference-slots:focus-within .reference-slot-card,
+.composer-dock-collapsed .keyframe-slots:hover .keyframe-slot-card,
+.composer-dock-collapsed .keyframe-slots:focus-within .keyframe-slot-card {
+  opacity: 1;
+}
+
+.reference-external-slot {
+  opacity: 0.58;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease,
+    background 180ms ease,
+    border-color 180ms ease !important;
+}
+
+.reference-external-slot:hover,
+.reference-external-slot:focus-visible {
+  opacity: 1;
+}
+
+html.dark .reference-external-slot {
+  background: rgb(255 255 255 / 0.018) !important;
+}
+
+html:not(.dark) .reference-external-slot {
+  background: rgb(255 255 255 / 0.20) !important;
+}
+
+html.dark .composer-settings-popover {
+  background: rgb(4 6 10 / 0.16) !important;
+  filter: drop-shadow(0 34px 90px rgb(0 0 0 / 0.38));
+  backdrop-filter: blur(34px) saturate(136%) !important;
+  -webkit-backdrop-filter: blur(34px) saturate(136%) !important;
+}
+
+html:not(.dark) .composer-settings-popover {
+  background: rgb(255 255 255 / 0.18) !important;
+  filter: drop-shadow(0 34px 90px rgb(15 23 42 / 0.14));
+  backdrop-filter: blur(34px) saturate(136%) !important;
+  -webkit-backdrop-filter: blur(34px) saturate(136%) !important;
+}
+
+html.dark .model-settings-composer {
+  border-color: rgb(255 255 255 / 0.10) !important;
+  background:
+    linear-gradient(180deg, rgb(18 18 20 / 0.60), rgb(8 9 12 / 0.48)),
+    rgb(8 9 12 / 0.28) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.075),
+    0 34px 90px rgb(0 0 0 / 0.34) !important;
+  backdrop-filter: blur(34px) saturate(136%) !important;
+  -webkit-backdrop-filter: blur(34px) saturate(136%) !important;
+}
+
+html:not(.dark) .model-settings-composer {
+  border-color: rgb(15 23 42 / 0.09) !important;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.64), rgb(248 250 252 / 0.48)),
+    rgb(255 255 255 / 0.26) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.78),
+    0 34px 90px rgb(15 23 42 / 0.12) !important;
+  backdrop-filter: blur(34px) saturate(136%) !important;
+  -webkit-backdrop-filter: blur(34px) saturate(136%) !important;
+}
+
+.model-settings-composer::before {
+  opacity: 0.18 !important;
+}
+
+@media (max-width: 640px) {
+  .results-toolbar {
+    padding-right: 0 !important;
+  }
+
+  .results-task-count {
+    top: 4rem;
+  }
 }

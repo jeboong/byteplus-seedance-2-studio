@@ -9,6 +9,8 @@ import {
 
 const TASKS_KEY = "sd2_tasks";
 const PERSIST_DEBOUNCE_MS = 800;
+const DEMO_VIDEO_URL =
+  "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -49,12 +51,26 @@ function persistTasks(tasks: GenerationTask[]) {
   }, PERSIST_DEBOUNCE_MS);
 }
 
+function isDemoTask(task: GenerationTask): boolean {
+  const demoVideo =
+    typeof task.videoUrl === "string" && task.videoUrl.includes(DEMO_VIDEO_URL);
+  const demoPrompt = task.prompt.trim().toLowerCase().startsWith("demo:");
+  return (
+    task.demo === true ||
+    task.taskId.startsWith("demo-") ||
+    demoVideo ||
+    demoPrompt
+  );
+}
+
 interface AppState {
   apiKey: string | null;
   setApiKey: (key: string) => void;
   alibabaApiKey: string | null;
   setAlibabaApiKey: (key: string) => void;
   clearApiKey: () => void;
+  demoMode: boolean;
+  setDemoMode: (enabled: boolean) => void;
 
   params: ModelParams;
   setParams: (params: Partial<ModelParams>) => void;
@@ -76,6 +92,7 @@ interface AppState {
   updateTask: (id: string, update: Partial<GenerationTask>) => void;
   removeTask: (id: string) => void;
   clearTasks: () => void;
+  clearDemoTasks: () => void;
 
   activeTaskId: string | null;
   setActiveTaskId: (id: string | null) => void;
@@ -104,6 +121,20 @@ export const useAppStore = create<AppState>((set) => ({
       localStorage.removeItem("alibaba_modelstudio_api_key");
     }
     set({ apiKey: null, alibabaApiKey: null });
+  },
+  demoMode: false,
+  setDemoMode: (enabled) => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sd2_demo_mode", enabled ? "1" : "0");
+    }
+    set((s) => {
+      if (enabled) return { demoMode: enabled };
+      const nextTasks = s.tasks.filter((task) => !isDemoTask(task));
+      if (nextTasks.length !== s.tasks.length) {
+        persistTasks(nextTasks);
+      }
+      return { demoMode: enabled, tasks: nextTasks };
+    });
   },
 
   params: DEFAULT_PARAMS,
@@ -166,6 +197,13 @@ export const useAppStore = create<AppState>((set) => ({
     }
     set({ tasks: [] });
   },
+  clearDemoTasks: () =>
+    set((s) => {
+      const next = s.tasks.filter((task) => !isDemoTask(task));
+      if (next.length === s.tasks.length) return {};
+      persistTasks(next);
+      return { tasks: next };
+    }),
 
   activeTaskId: null,
   setActiveTaskId: (id) => set({ activeTaskId: id }),
@@ -217,6 +255,14 @@ export async function hydrateTasks(): Promise<void> {
     }
 
     if (Array.isArray(saved)) {
+      const demoMode = localStorage.getItem("sd2_demo_mode") === "1";
+      if (!demoMode) {
+        const filtered = saved.filter((task) => !isDemoTask(task));
+        if (filtered.length !== saved.length) {
+          saved = filtered;
+          await idbSet(TASKS_KEY, filtered);
+        }
+      }
       useAppStore.setState({ tasks: saved, tasksHydrated: true });
     } else {
       useAppStore.setState({ tasksHydrated: true });

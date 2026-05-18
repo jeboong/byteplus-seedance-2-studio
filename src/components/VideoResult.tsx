@@ -1,6 +1,11 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import {
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+} from "react";
 import {
   Download,
   Loader2,
@@ -8,16 +13,18 @@ import {
   XCircle,
   Clock,
   RefreshCw,
+  X,
+  ChevronLeft,
   LayoutList,
   LayoutGrid,
-  Trash2,
   Ban,
   Timer,
   ImageIcon,
-  Copy,
   Check,
   RotateCcw,
   Maximize2,
+  Minimize2,
+  Search,
   Paperclip,
   Film,
   Music,
@@ -27,30 +34,21 @@ import { useAppStore } from "@/lib/store";
 import { deleteTask } from "@/lib/api";
 import { getRefTags } from "@/lib/refTags";
 import { downloadCrossOrigin, isUrlExpired } from "@/lib/downloadVideo";
-import { costFromUsage, getModelOption, isAlibabaModel } from "@/lib/types";
+import {
+  getTaskDownloadKey,
+  hasDownloadedTask,
+  markTaskDownloaded,
+  subscribeDownloadedTasks,
+} from "@/lib/downloadState";
+import { getModelOption, isAlibabaModel } from "@/lib/types";
 import type { GenerationTask, ReferenceAsset } from "@/lib/types";
 import GenerationFX from "./GenerationFX";
 import TaskDetailModal from "./TaskDetailModal";
 
-type ViewMode = "list" | "grid";
+type ViewMode = "free" | "grid";
 
-function taskHasVideoInput(task: GenerationTask): boolean {
-  return task.references?.some((r) => r.type === "video") ?? false;
-}
-
-function getUsageLabel(task: GenerationTask): string | null {
-  if (!task.usage) return null;
-  if (typeof task.usage.total_tokens === "number") {
-    return `${(task.usage.total_tokens / 1000).toFixed(1)}K tokens`;
-  }
-  const duration = task.usage.output_video_duration ?? task.usage.duration;
-  const sr = task.usage.SR;
-  const parts = [
-    typeof duration === "number" ? `${duration}s` : null,
-    sr ? `${sr}P` : null,
-    task.usage.ratio,
-  ].filter(Boolean);
-  return parts.length > 0 ? parts.join(" · ") : null;
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 function cssAspectRatio(ratio?: string): string {
@@ -89,7 +87,7 @@ function ReferenceThumb({
 
   return (
     <div
-      className="relative w-8 h-8 rounded-md overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center shrink-0"
+      className="glass-control relative w-8 h-8 rounded-md overflow-hidden border flex items-center justify-center shrink-0"
       title={`${tag ? `${tag} · ` : ""}${asset.name} (${asset.role || asset.type})`}
     >
       {isImage && asset.preview && !isAsset ? (
@@ -138,10 +136,12 @@ function HoverVideo({
   src,
   compact,
   ratio,
+  fill,
 }: {
   src: string;
   compact?: boolean;
   ratio?: string;
+  fill?: boolean;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -182,9 +182,9 @@ function HoverVideo({
     <div
       ref={wrapRef}
       className={`relative w-full bg-black overflow-hidden flex items-center justify-center ${
-        compact ? "max-h-[240px]" : "max-h-[480px]"
+        fill ? "h-full max-h-none" : compact ? "max-h-[240px]" : "max-h-[480px]"
       }`}
-      style={{ aspectRatio: cssAspectRatio(ratio) }}
+      style={fill ? undefined : { aspectRatio: cssAspectRatio(ratio) }}
     >
       {inView ? (
         <video
@@ -195,7 +195,7 @@ function HoverVideo({
           playsInline
           preload="metadata"
           controls
-          className="absolute inset-0 w-full h-full object-contain"
+          className="absolute inset-0 w-full h-full object-cover"
           onMouseEnter={play}
           onMouseLeave={pause}
           onFocus={play}
@@ -243,7 +243,7 @@ function GenerationState({
       label={label}
       modelLabel={modelLabel}
       compact={compact}
-      className={`flex-shrink-0 ${compact ? "h-36" : "h-52"}`}
+      className="h-full w-full"
     />
   );
 }
@@ -252,30 +252,70 @@ function TaskCard({
   task,
   compact,
   onOpenDetail,
+  expanded = false,
+  onToggleExpand,
+  selectionMode = false,
+  selected = false,
+  onToggleSelect,
 }: {
   task: GenerationTask;
   compact?: boolean;
   onOpenDetail: () => void;
+  expanded?: boolean;
+  onToggleExpand?: () => void;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   const { apiKey, alibabaApiKey, removeTask, loadFromTask } = useAppStore();
-  const [copiedSeed, setCopiedSeed] = useState(false);
-  const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [reused, setReused] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [deleteMenu, setDeleteMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const downloadKey = getTaskDownloadKey(task);
+  const [downloaded, setDownloaded] = useState(false);
 
   const expired = isUrlExpired(task.createdAt);
+
+  useEffect(() => {
+    const sync = () => setDownloaded(hasDownloadedTask(downloadKey));
+    sync();
+    return subscribeDownloadedTasks(sync);
+  }, [downloadKey]);
+
+  useEffect(() => {
+    if (!deleteMenu) return;
+    const close = () => setDeleteMenu(null);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [deleteMenu]);
 
   const handleDownload = useCallback(
     async (e: React.MouseEvent<HTMLButtonElement>) => {
       e.preventDefault();
-      if (!task.videoUrl || downloading) return;
+      e.stopPropagation();
+      if (!task.videoUrl || downloading || downloaded) return;
       setDownloading(true);
       const fname = `seedance-${task.taskId || task.id}.mp4`;
-      await downloadCrossOrigin(task.videoUrl, fname);
-      setDownloading(false);
+      try {
+        await downloadCrossOrigin(task.videoUrl, fname);
+        markTaskDownloaded(downloadKey);
+        setDownloaded(true);
+      } finally {
+        setDownloading(false);
+      }
     },
-    [task.videoUrl, task.taskId, task.id, downloading]
+    [downloadKey, downloaded, task.videoUrl, task.taskId, task.id, downloading]
   );
 
   const handleReuse = useCallback(() => {
@@ -286,16 +326,6 @@ function TaskCard({
     }
     setTimeout(() => setReused(false), 1500);
   }, [loadFromTask, task]);
-
-  const handleCopyPrompt = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(task.prompt);
-      setCopiedPrompt(true);
-      setTimeout(() => setCopiedPrompt(false), 1500);
-    } catch {
-      /* clipboard unavailable */
-    }
-  }, [task.prompt]);
 
   const statusConfig = {
     pending: {
@@ -354,15 +384,10 @@ function TaskCard({
   const taskApiKey = isAlibaba ? alibabaApiKey : apiKey;
   const canCancel = task.status === "queued" && !isAlibaba;
   const isGenerating = ["pending", "queued", "running"].includes(task.status);
-  const hasVideoInput = taskHasVideoInput(task);
   const taskModel = getModelOption(task.params.modelId);
-  const actualCost =
-    typeof task.usage?.total_tokens === "number" && task.usage.total_tokens > 0
-      ? costFromUsage(task.params, hasVideoInput, task.usage.total_tokens)
-      : null;
-  const usageLabel = getUsageLabel(task);
 
   const handleDelete = useCallback(async () => {
+    setDeleteMenu(null);
     if (!taskApiKey || !task.taskId) {
       removeTask(task.id);
       return;
@@ -377,6 +402,26 @@ function TaskCard({
     setDeleting(false);
   }, [taskApiKey, task.taskId, task.id, task.params.modelId, removeTask]);
 
+  const openDeleteMenu = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (!canDelete) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest("button,a,input,textarea,select,video,[data-no-task-drag]")
+      ) {
+        return;
+      }
+      event.preventDefault();
+      const rect = event.currentTarget.getBoundingClientRect();
+      setDeleteMenu({
+        x: clampNumber(event.clientX - rect.left, 12, Math.max(12, rect.width - 132)),
+        y: clampNumber(event.clientY - rect.top, 12, Math.max(12, rect.height - 48)),
+      });
+    },
+    [canDelete]
+  );
+
   const handleCancel = useCallback(async () => {
     if (!taskApiKey || !task.taskId) return;
     setDeleting(true);
@@ -389,35 +434,126 @@ function TaskCard({
     setDeleting(false);
   }, [taskApiKey, task.taskId, task.id, task.params.modelId]);
 
-  const copySeed = () => {
-    if (task.seed !== undefined) {
-      navigator.clipboard.writeText(String(task.seed));
-      setCopiedSeed(true);
-      setTimeout(() => setCopiedSeed(false), 1500);
-    }
-  };
+  const openDetailFromBody = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest("button,a,input,textarea,select,video,[data-no-task-click]")
+      ) {
+        return;
+      }
+      event.stopPropagation();
+      if (selectionMode) {
+        onToggleSelect?.();
+        return;
+      }
+      onOpenDetail();
+    },
+    [onOpenDetail, onToggleSelect, selectionMode]
+  );
+
+  const handleCardSelectClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (!selectionMode) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest("button,a,input,textarea,select,video,[data-no-task-click]")
+      ) {
+        return;
+      }
+      event.stopPropagation();
+      onToggleSelect?.();
+    },
+    [onToggleSelect, selectionMode]
+  );
 
   return (
-    <div className="task-card bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm h-full flex flex-col">
+    <div
+      className={`task-card rounded-2xl border overflow-hidden h-full flex flex-col ${
+        expanded ? "task-card-expanded" : ""
+      } ${selectionMode ? "task-card-selectable" : ""} ${
+        selected ? "task-card-selected" : ""
+      }`}
+      onContextMenu={openDeleteMenu}
+      onClick={handleCardSelectClick}
+    >
+      {selectionMode && (
+        <button
+          type="button"
+          data-no-task-drag
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleSelect?.();
+          }}
+          className="task-select-check"
+          title="선택"
+          aria-label={selected ? "선택 해제" : "선택"}
+          aria-pressed={selected}
+        >
+          {selected && <Check className="h-3.5 w-3.5" />}
+        </button>
+      )}
+      <button
+        data-no-task-drag
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleExpand?.();
+        }}
+        className="task-icon-button task-detail-button task-card-detail-floating"
+        title={expanded ? "카드 축소" : "카드 크게 보기"}
+        aria-label={expanded ? "카드 축소" : "카드 크게 보기"}
+      >
+        {expanded ? (
+          <Minimize2 className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
+        ) : (
+          <Maximize2 className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
+        )}
+      </button>
+      {deleteMenu && canDelete && (
+        <div
+          className="task-context-menu"
+          style={{ left: `${deleteMenu.x}px`, top: `${deleteMenu.y}px` }}
+          data-no-task-drag
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleting}
+            className="task-context-menu-item"
+          >
+            {deleting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <XCircle className="h-3.5 w-3.5" />
+            )}
+            <span>Remove</span>
+          </button>
+        </div>
+      )}
       {isFinished && task.videoUrl ? (
-        <div className="bg-black overflow-hidden flex-shrink-0 relative group">
+        <div className="task-card-media bg-black overflow-hidden flex-shrink-0 relative group">
           <HoverVideo
             src={task.videoUrl}
             compact={compact}
+            fill={!compact}
             ratio={task.actualRatio || task.params.ratio}
           />
-          <div className="pointer-events-none absolute top-2 left-2 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded opacity-100 group-hover:opacity-0 transition-opacity">
-            Hover to play
-          </div>
         </div>
       ) : isGenerating ? (
-        <GenerationState compact={compact} label={cfg.label} modelLabel={taskModel.name} />
+        <div className="task-card-media task-card-media-generating overflow-hidden flex-shrink-0 relative">
+          <GenerationState
+            compact={compact}
+            label={cfg.label}
+            modelLabel={taskModel.name}
+          />
+        </div>
       ) : (
-        <div
-          className={`${cfg.bg} flex flex-col items-center justify-center gap-2 flex-shrink-0 ${
-            compact ? "py-12" : "py-20"
-          }`}
-        >
+        <div className="task-card-media task-card-media-status flex flex-col items-center justify-center gap-2 flex-shrink-0">
           <Icon
             className={`${compact ? "w-6 h-6" : "w-7 h-7"} ${cfg.color}`}
           />
@@ -441,22 +577,20 @@ function TaskCard({
         </div>
       )}
 
-      <div className={`${compact ? "px-3 py-2" : "px-4 py-3"} flex-1`}>
+      <div
+        className={`${compact ? "px-3 py-2" : "px-4 py-2"} task-card-body flex-none cursor-pointer`}
+        data-no-task-drag
+        onClick={openDetailFromBody}
+        title="상세보기"
+      >
         <div className="flex items-start gap-1.5">
           <p
             className={`flex-1 text-gray-600 leading-relaxed whitespace-pre-wrap break-words ${
-              compact ? "text-[11px] line-clamp-1" : "text-xs line-clamp-2"
+              compact ? "text-[11px] line-clamp-1" : "text-xs line-clamp-1"
             }`}
           >
             {task.prompt}
           </p>
-          <button
-            onClick={onOpenDetail}
-            className="shrink-0 p-0.5 -mt-0.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded transition-colors"
-            title="상세보기 (영상 + 프롬프트 + 설정)"
-          >
-            <Maximize2 className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
-          </button>
         </div>
 
         {!compact && task.references && task.references.length > 0 && (() => {
@@ -492,95 +626,51 @@ function TaskCard({
                 ? `${task.params.duration}s`
                 : "auto"}
             </span>
-            {task.seed !== undefined && !compact && (
-              <>
-                <span>·</span>
-                <button
-                  onClick={copySeed}
-                  className="inline-flex items-center gap-0.5 hover:text-gray-600 transition-colors"
-                  title="Copy seed"
-                >
-                  seed:{task.seed}
-                  {copiedSeed ? (
-                    <Check className="w-2.5 h-2.5 text-green-500" />
-                  ) : (
-                    <Copy className="w-2.5 h-2.5" />
-                  )}
-                </button>
-              </>
-            )}
-            {usageLabel && !compact && (
-              <>
-                <span>·</span>
-                <span>{usageLabel}</span>
-                {actualCost !== null && (
-                  <>
-                    <span>·</span>
-                    <span>${actualCost.toFixed(3)}</span>
-                  </>
-                )}
-              </>
-            )}
-            {!compact && (
-              <>
-                <span>·</span>
-                <span>{new Date(task.createdAt).toLocaleTimeString()}</span>
-              </>
-            )}
+            {!compact && <span>·</span>}
+            {!compact && <span>{taskModel.name}</span>}
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0 ml-2">
+          <div
+            className="task-card-actions flex items-center gap-1.5 shrink-0 ml-2"
+            data-no-task-click
+            onClick={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
             <button
-              onClick={handleCopyPrompt}
-              className={`inline-flex items-center gap-0.5 border rounded-lg font-medium transition-colors ${
-                copiedPrompt
-                  ? "border-green-300 bg-green-50 text-green-600"
-                  : "border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-              } ${
-                compact
-                  ? "px-1.5 py-0.5 text-[9px]"
-                  : "px-2 py-0.5 text-[10px]"
-              }`}
-              title="프롬프트 복사"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenDetail();
+              }}
+              className="task-icon-button"
+              title="상세보기"
+              aria-label="상세보기"
             >
-              {copiedPrompt ? (
-                <Check className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
-              ) : (
-                <Copy className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
-              )}
-              {!compact && (copiedPrompt ? "Copied" : "Copy")}
+              <Search className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
             </button>
             <button
               onClick={handleReuse}
-              className={`inline-flex items-center gap-0.5 border rounded-lg font-medium transition-colors ${
+              className={`task-icon-button ${
                 reused
-                  ? "border-green-300 bg-green-50 text-green-600"
-                  : "border-gray-200 text-gray-500 hover:bg-primary-50 hover:border-primary-200 hover:text-primary-600"
-              } ${
-                compact
-                  ? "px-1.5 py-0.5 text-[9px]"
-                  : "px-2 py-0.5 text-[10px]"
+                  ? "task-icon-button-success"
+                  : ""
               }`}
               title="이 작업의 프롬프트·첨부·설정을 다시 불러오기"
+              aria-label="Reuse"
             >
               {reused ? (
                 <Check className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
               ) : (
                 <RotateCcw className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
               )}
-              {!compact && (reused ? "Loaded" : "Reuse")}
             </button>
             {isFinished && task.lastFrameUrl && (
               <a
                 href={task.lastFrameUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`inline-flex items-center gap-0.5 border border-gray-200 text-gray-500 rounded-lg font-medium hover:bg-gray-50 transition-colors ${
-                  compact
-                    ? "px-1.5 py-0.5 text-[9px]"
-                    : "px-2 py-0.5 text-[10px]"
-                }`}
+                className="task-icon-button"
                 title="Last frame"
+                aria-label="Last frame"
               >
                 <ImageIcon className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
               </a>
@@ -588,59 +678,37 @@ function TaskCard({
             {isFinished && (
               <button
                 onClick={handleDownload}
-                disabled={downloading}
-                className={`inline-flex items-center gap-1 bg-primary-500 text-white rounded-lg font-medium hover:bg-primary-600 transition-colors disabled:opacity-60 ${
-                  compact
-                    ? "px-2 py-0.5 text-[10px]"
-                    : "px-2.5 py-1 text-[11px]"
-                }`}
-                title="비디오 다운로드 (한 번만 fetch, 즉시 메모리 해제)"
+                disabled={downloading || downloaded}
+                className={`task-icon-button ${
+                  downloaded ? "task-icon-button-success" : "task-icon-button-primary"
+                } disabled:opacity-75`}
+                title={
+                  downloaded
+                    ? "이미 다운로드된 작업입니다"
+                    : "비디오 다운로드 (한 번만 fetch, 즉시 메모리 해제)"
+                }
+                aria-label={downloaded ? "다운로드됨" : "다운로드"}
               >
                 {downloading ? (
                   <Loader2
                     className={`${compact ? "w-2.5 h-2.5" : "w-3 h-3"} animate-spin`}
                   />
+                ) : downloaded ? (
+                  <Check className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
                 ) : (
                   <Download className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
                 )}
-                {compact
-                  ? downloading
-                    ? "..."
-                    : "DL"
-                  : downloading
-                  ? "Saving"
-                  : "Download"}
               </button>
             )}
             {canCancel && (
               <button
                 onClick={handleCancel}
                 disabled={deleting}
-                className={`inline-flex items-center gap-1 border border-orange-200 text-orange-500 rounded-lg font-medium hover:bg-orange-50 transition-colors ${
-                  compact
-                    ? "px-1.5 py-0.5 text-[9px]"
-                    : "px-2 py-0.5 text-[10px]"
-                }`}
+                className="task-icon-button text-orange-500 hover:bg-orange-50"
                 title="Cancel task"
+                aria-label="Cancel task"
               >
                 <Ban className="w-3 h-3" />
-                {!compact && "Cancel"}
-              </button>
-            )}
-            {canDelete && (
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className={`inline-flex items-center gap-0.5 text-gray-400 hover:text-red-500 transition-colors ${
-                  compact ? "p-0.5" : "p-1"
-                }`}
-                title="Delete task"
-              >
-                {deleting ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <Trash2 className="w-3 h-3" />
-                )}
               </button>
             )}
           </div>
@@ -658,12 +726,13 @@ function ViewToggle({
   onChange: (m: ViewMode) => void;
 }) {
   return (
-    <div className="inline-flex items-center bg-surface-100 rounded-lg p-0.5">
+    <div className="view-toggle inline-flex items-center rounded-lg p-0.5">
       <button
-        onClick={() => onChange("list")}
+        onClick={() => onChange("free")}
+        title="Free board"
         className={`p-1.5 rounded-md transition-colors ${
-          mode === "list"
-            ? "bg-white shadow-sm text-gray-700"
+          mode === "free"
+            ? "view-toggle-selected text-gray-700"
             : "text-gray-400 hover:text-gray-500"
         }`}
       >
@@ -671,9 +740,10 @@ function ViewToggle({
       </button>
       <button
         onClick={() => onChange("grid")}
+        title="Grid mode"
         className={`p-1.5 rounded-md transition-colors ${
           mode === "grid"
-            ? "bg-white shadow-sm text-gray-700"
+            ? "view-toggle-selected text-gray-700"
             : "text-gray-400 hover:text-gray-500"
         }`}
       >
@@ -684,20 +754,102 @@ function ViewToggle({
 }
 
 export default function VideoResult() {
-  const { tasks, clearTasks } = useAppStore();
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const { tasks, clearTasks, removeTask } = useAppStore();
+  const [viewMode, setViewMode] = useState<ViewMode>("free");
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+  const [taskActionsOpen, setTaskActionsOpen] = useState(false);
+  const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
 
   const detailTask =
     detailTaskId !== null
       ? tasks.find((t) => t.id === detailTaskId) ?? null
       : null;
 
+  useEffect(() => {
+    setSelectedTaskIds((current) => {
+      if (current.size === 0) return current;
+      const liveIds = new Set(tasks.map((task) => task.id));
+      let changed = false;
+      const next = new Set<string>();
+      current.forEach((id) => {
+        if (liveIds.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? next : current;
+    });
+  }, [tasks]);
+
+  useEffect(() => {
+    if (tasks.length > 0) return;
+    setTaskActionsOpen(false);
+    setDeleteAllConfirm(false);
+    setSelectionMode(false);
+    setSelectedTaskIds(new Set());
+  }, [tasks.length]);
+
+  const closeTaskActions = useCallback(() => {
+    setTaskActionsOpen(false);
+    setDeleteAllConfirm(false);
+    setSelectionMode(false);
+    setSelectedTaskIds(new Set());
+  }, []);
+
+  const toggleTaskSelection = useCallback((id: string) => {
+    setDeleteAllConfirm(false);
+    setSelectedTaskIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectionDelete = useCallback(() => {
+    setDeleteAllConfirm(false);
+    if (!selectionMode) {
+      setSelectionMode(true);
+      setSelectedTaskIds(new Set());
+      return;
+    }
+
+    if (selectedTaskIds.size === 0) return;
+    selectedTaskIds.forEach((id) => removeTask(id));
+    setSelectionMode(false);
+    setSelectedTaskIds(new Set());
+    setTaskActionsOpen(false);
+  }, [removeTask, selectedTaskIds, selectionMode]);
+
+  const handleDeleteAll = useCallback(() => {
+    if (!deleteAllConfirm) {
+      setSelectionMode(false);
+      setSelectedTaskIds(new Set());
+      setDeleteAllConfirm(true);
+      return;
+    }
+
+    clearTasks();
+    setTaskActionsOpen(false);
+    setDeleteAllConfirm(false);
+    setSelectionMode(false);
+    setSelectedTaskIds(new Set());
+  }, [clearTasks, deleteAllConfirm]);
+
   if (tasks.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-14 h-14 rounded-2xl bg-surface-100 flex items-center justify-center mx-auto mb-3">
+        <div className="glass-panel motion-rise rounded-2xl px-8 py-7 text-center subtle-glow">
+          <div className="glass-chip w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3">
             <RefreshCw className="w-5 h-5 text-gray-300" />
           </div>
           <p className="text-sm text-gray-400 mb-1">No generations yet</p>
@@ -711,39 +863,115 @@ export default function VideoResult() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-3">
-        <span className="text-xs text-gray-400">{tasks.length} tasks</span>
-        <div className="flex items-center gap-2">
-          {tasks.length > 0 && (
+      <div className="results-toolbar flex items-center gap-2">
+        <div
+          className={`task-action-split view-toggle inline-flex h-8 items-center rounded-lg p-0.5 ${
+            taskActionsOpen ? "task-action-split-open" : ""
+          }`}
+        >
+          {taskActionsOpen ? (
+            <>
+              <button
+                type="button"
+                onClick={closeTaskActions}
+                className="task-action-split-button"
+                title="작업 관리 접기"
+                aria-label="작업 관리 접기"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="task-action-split-divider" aria-hidden />
+              <button
+                type="button"
+                onClick={handleSelectionDelete}
+                disabled={selectionMode && selectedTaskIds.size === 0}
+                className={`task-action-split-text-button ${
+                  selectionMode ? "task-action-split-selected" : ""
+                }`}
+                title={
+                  selectionMode
+                    ? selectedTaskIds.size > 0
+                      ? `${selectedTaskIds.size}개 선택 삭제`
+                      : "삭제할 작업을 선택하세요"
+                    : "선택삭제"
+                }
+                aria-label="선택삭제"
+              >
+                {selectionMode && selectedTaskIds.size > 0
+                  ? `선택삭제 ${selectedTaskIds.size}`
+                  : "선택삭제"}
+              </button>
+              <span className="task-action-split-divider" aria-hidden />
+              <button
+                type="button"
+                onClick={handleDeleteAll}
+                className={`task-action-split-text-button task-action-split-danger ${
+                  deleteAllConfirm ? "task-action-split-confirm" : ""
+                }`}
+                title="기록 전체 삭제"
+                aria-label="기록 전체 삭제"
+              >
+                {deleteAllConfirm ? "한번 더" : "전체삭제"}
+              </button>
+            </>
+          ) : (
             <button
-              onClick={clearTasks}
-              className="text-[10px] text-gray-400 hover:text-red-500 transition-colors px-2 py-1 rounded-lg hover:bg-red-50"
+              type="button"
+              onClick={() => {
+                setTaskActionsOpen(true);
+                setDeleteAllConfirm(false);
+              }}
+              className="task-action-split-button"
+              title="작업 관리"
+              aria-label="작업 관리 열기"
             >
-              Clear all
+              <X className="h-4 w-4" />
             </button>
           )}
-          <ViewToggle mode={viewMode} onChange={setViewMode} />
         </div>
+        <ViewToggle mode={viewMode} onChange={setViewMode} />
+      </div>
+      <div className="results-task-count glass-chip">
+        {tasks.length} tasks
       </div>
 
-      {viewMode === "list" ? (
-        <div className="flex flex-col items-center gap-4">
+      {viewMode === "free" ? (
+        <div
+          className="task-list-board free-board relative mx-auto flex w-full max-w-5xl flex-col gap-8"
+        >
           {tasks.map((task) => (
-            <div key={task.id} className="w-full max-w-2xl">
-              <TaskCard
-                task={task}
-                onOpenDetail={() => setDetailTaskId(task.id)}
-              />
-            </div>
+            <TaskCard
+              key={task.id}
+              task={task}
+              expanded={expandedTaskId === task.id}
+              onToggleExpand={() =>
+                setExpandedTaskId((current) =>
+                  current === task.id ? null : task.id
+                )
+              }
+              selectionMode={selectionMode}
+              selected={selectedTaskIds.has(task.id)}
+              onToggleSelect={() => toggleTaskSelection(task.id)}
+              onOpenDetail={() => setDetailTaskId(task.id)}
+            />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
           {tasks.map((task) => (
             <TaskCard
               key={task.id}
               task={task}
               compact
+              expanded={expandedTaskId === task.id}
+              onToggleExpand={() =>
+                setExpandedTaskId((current) =>
+                  current === task.id ? null : task.id
+                )
+              }
+              selectionMode={selectionMode}
+              selected={selectedTaskIds.has(task.id)}
+              onToggleSelect={() => toggleTaskSelection(task.id)}
               onOpenDetail={() => setDetailTaskId(task.id)}
             />
           ))}

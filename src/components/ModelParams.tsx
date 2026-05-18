@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import {
   RefreshCw,
   X,
@@ -49,22 +49,47 @@ function Toggle({
   );
 }
 
-function RatioIcon({ ratio }: { ratio: AspectRatio }) {
+function RatioPreview({ ratio }: { ratio: AspectRatio }) {
   const dim = RATIO_ICONS[ratio];
-  const scale = 14 / Math.max(dim.w, dim.h);
+  const scale = 62 / Math.max(dim.w, dim.h);
   const w = Math.round(dim.w * scale);
   const h = Math.round(dim.h * scale);
   return (
-    <div className="flex items-center justify-center w-5 h-5">
+    <div className="ratio-preview flex h-16 w-24 items-center justify-center rounded-xl border">
       <div
-        className="border border-current rounded-[2px]"
+        className={`ratio-preview-frame rounded-md border ${
+          ratio === "adaptive" ? "ratio-preview-adaptive" : ""
+        }`}
         style={{ width: w, height: h }}
       />
     </div>
   );
 }
 
-export default function ModelParams({ onClose }: { onClose?: () => void }) {
+function rangeProgress(value: number, min: number, max: number) {
+  if (max <= min) return 100;
+  return ((value - min) / (max - min)) * 100;
+}
+
+function ratioDescription(ratio: AspectRatio) {
+  if (ratio === "adaptive") return "Source-aware canvas";
+  if (ratio === "1:1") return "Square";
+  if (ratio === "9:16" || ratio === "3:4") return "Portrait";
+  if (ratio === "21:9") return "Cinematic wide";
+  return "Landscape";
+}
+
+function ratioLabel(value: AspectRatio, fallback?: string) {
+  return value === "adaptive" ? "Auto" : fallback ?? value;
+}
+
+export default function ModelParams({
+  onClose,
+  variant = "dialog",
+}: {
+  onClose?: () => void;
+  variant?: "panel" | "dialog" | "composer";
+}) {
   const {
     params,
     setParams,
@@ -76,11 +101,18 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
   const currentModel = getModelOption(params.modelId);
   const isAlibaba = isAlibabaModel(params.modelId);
   const durationMin = minDurationForModel(params.modelId);
+  const durationProgress = rangeProgress(params.duration, durationMin, 15);
+  const outputProgress = rangeProgress(params.outputCount, 1, 4);
   const canUseSmartDuration = supportsSmartDuration(params.modelId);
   const visibleRatios = ASPECT_RATIOS.filter((r) =>
     supportsAspectRatio(params.modelId, r.value)
   );
+  const selectedRatio =
+    visibleRatios.find((r) => r.value === params.ratio) ?? visibleRatios[0];
+  const selectableModels = MODELS.filter((m) => m.provider === "byteplus");
   const happyHorseModels = MODELS.filter((m) => m.provider === "alibaba");
+  const isDialog = variant === "dialog";
+  const isComposer = variant === "composer";
 
   const selectModel = (modelId: ModelId) => {
     const model = getModelOption(modelId);
@@ -142,30 +174,124 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
     setParams({ seed: String(Math.floor(Math.random() * 2147483647)) });
   };
 
+  const cycleAspectRatio = () => {
+    if (visibleRatios.length <= 1) return;
+    const currentIndex = Math.max(
+      0,
+      visibleRatios.findIndex((ratio) => ratio.value === selectedRatio.value)
+    );
+    const nextIndex = (currentIndex + 1) % visibleRatios.length;
+    setParams({ ratio: visibleRatios[nextIndex].value });
+  };
+
+  useEffect(() => {
+    if (!isAlibaba) return;
+    setParams({
+      modelId: "dreamina-seedance-2-0-260128",
+      mode: "reference",
+    });
+  }, [isAlibaba, setParams]);
+
   return (
-    <div className="param-panel w-80 bg-white border-l border-gray-100 flex flex-col h-full overflow-y-auto scrollbar-thin">
-      <div className="param-panel-header flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
-        <h2 className="text-sm font-semibold text-gray-800">Model Params</h2>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={resetParams}
-            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-            title="Reset"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
-          {onClose && (
+    <div
+      className={
+        isComposer
+          ? "model-settings-composer glass-panel flex max-h-[min(74vh,560px)] w-[min(92vw,25.5rem)] flex-col overflow-hidden rounded-[1.65rem] border"
+          : isDialog
+          ? "model-settings-dialog glass-panel flex max-h-[min(82vh,760px)] w-[min(92vw,720px)] flex-col overflow-hidden rounded-[2rem] border"
+          : "param-panel glass-panel w-80 border-l border-white/50 flex flex-col h-full overflow-y-auto scrollbar-thin"
+      }
+    >
+      {!isComposer && (
+        <div
+          className={`param-panel-header flex items-center justify-between border-b border-white/50 ${
+            isDialog ? "px-6 py-5" : "sticky top-0 z-10 px-5 py-4"
+          }`}
+        >
+          <div>
+            <h2 className="text-sm font-semibold text-gray-800">
+              Generation Settings
+            </h2>
+            {isDialog && (
+              <p className="mt-1 text-xs text-gray-400">
+                현재 페이지의 생성 옵션을 조정합니다.
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
             <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+              onClick={resetParams}
+              className="glass-chip p-1.5 rounded-lg text-gray-400 hover:text-gray-600 transition-colors"
+              title="Reset"
             >
-              <X className="w-4 h-4" />
+              <RefreshCw className="w-4 h-4" />
             </button>
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="glass-chip p-1.5 rounded-lg text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {isDialog && (
+        <div className={`settings-mode-tabs border-white/40 ${
+          isComposer ? "px-4 pb-3 pt-4" : "border-b px-5 py-4"
+        }`}>
+          {!isAlibaba ? (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setParams({ mode: "reference" })}
+                className={`settings-mode-tab ${
+                  params.mode === "reference" ? "settings-mode-tab-active" : ""
+                }`}
+              >
+                Reference
+              </button>
+              <button
+                onClick={() => setParams({ mode: "first_last_frame" })}
+                className={`settings-mode-tab ${
+                  params.mode === "first_last_frame"
+                    ? "settings-mode-tab-active"
+                    : ""
+                }`}
+              >
+                Keyframe
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {happyHorseModels.map((model) => (
+                <button
+                  key={model.id}
+                  onClick={() => selectModel(model.id)}
+                  className={`settings-mode-tab ${
+                    params.modelId === model.id
+                      ? "settings-mode-tab-active"
+                      : ""
+                  }`}
+                >
+                  {model.happyHorseMode === "t2v"
+                    ? "Text"
+                    : model.happyHorseMode === "i2v"
+                    ? "Image"
+                    : "Reference"}
+                </button>
+              ))}
+            </div>
           )}
         </div>
-      </div>
+      )}
 
-      <div className="p-5 space-y-6 flex-1">
+      <div
+        className={`flex-1 space-y-6 overflow-y-auto scrollbar-thin ${
+          isComposer ? "px-4 pb-4 pt-5" : isDialog ? "p-5 sm:p-6" : "p-5"
+        }`}
+      >
         {/* Model Selector */}
         <section>
           <label className="block text-xs font-medium text-gray-500 mb-2">
@@ -174,7 +300,7 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
           <div className="relative">
             <button
               onClick={() => setModelDropdown(!modelDropdown)}
-              className="w-full flex items-center justify-between gap-2 px-3 py-2.5 border border-gray-200 rounded-xl text-sm hover:border-gray-300 transition-colors"
+              className="glass-control w-full flex items-center justify-between gap-2 px-3 py-2.5 border rounded-xl text-sm hover:border-gray-300 transition-colors"
             >
               <div className="flex items-center gap-2">
                 <Layers className="w-4 h-4 text-primary-500" />
@@ -197,11 +323,11 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
                   className="fixed inset-0 z-10"
                   onClick={() => setModelDropdown(false)}
                 />
-                <div className="absolute top-full mt-1 left-0 right-0 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-20">
-                  {MODELS.map((m) => (
+                <div className="glass-popover absolute top-full mt-1 left-0 right-0 rounded-xl py-1 z-20 overflow-hidden">
+                  {selectableModels.map((m) => (
                     <button
                       key={m.id}
-                      className={`w-full text-left px-3 py-2.5 hover:bg-gray-50 ${
+                      className={`w-full text-left px-3 py-2.5 hover:bg-white/40 ${
                         params.modelId === m.id ? "bg-primary-50" : ""
                       }`}
                       onClick={() => {
@@ -220,11 +346,6 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
                               : m.id}
                           </p>
                         </div>
-                        {m.badge && (
-                          <span className="text-[10px] text-primary-500 font-medium">
-                            {m.badge}
-                          </span>
-                        )}
                       </div>
                       <div className="mt-1 flex gap-3 text-[10px] text-gray-400">
                         {m.provider === "alibaba" ? (
@@ -248,6 +369,26 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
                       </div>
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full cursor-not-allowed px-3 py-2.5 text-left opacity-55"
+                    title="Coming soon"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-medium text-gray-800">
+                          HappyHorse
+                        </p>
+                        <p className="text-[10px] text-gray-400">
+                          Alibaba ModelStudio
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400">
+                        Coming soon
+                      </span>
+                    </div>
+                  </button>
                 </div>
               </>
             )}
@@ -255,7 +396,7 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
         </section>
 
         {/* Mode */}
-        {!isAlibaba ? (
+        {!isDialog && !isAlibaba ? (
         <section>
           <label className="block text-xs font-medium text-gray-500 mb-2">
             Mode
@@ -265,7 +406,7 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
               onClick={() => setParams({ mode: "reference" })}
               className={`param-option py-2 rounded-lg text-xs font-medium transition-all ${
                 params.mode === "reference"
-                  ? "param-choice-selected bg-white text-gray-800 shadow-sm"
+                  ? "param-choice-selected text-gray-800"
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
@@ -275,7 +416,7 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
               onClick={() => setParams({ mode: "first_last_frame" })}
               className={`param-option py-2 rounded-lg text-xs font-medium transition-all ${
                 params.mode === "first_last_frame"
-                  ? "param-choice-selected bg-white text-gray-800 shadow-sm"
+                  ? "param-choice-selected text-gray-800"
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
@@ -283,7 +424,7 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
             </button>
           </div>
         </section>
-        ) : (
+        ) : !isDialog ? (
           <section>
             <label className="block text-xs font-medium text-gray-500 mb-2">
               HappyHorse Mode
@@ -295,7 +436,7 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
                   onClick={() => selectModel(model.id)}
                   className={`param-option py-2 rounded-lg text-[11px] font-medium transition-all ${
                     params.modelId === model.id
-                      ? "param-choice-selected bg-white text-gray-800 shadow-sm"
+                      ? "param-choice-selected text-gray-800"
                       : "text-gray-500 hover:text-gray-700"
                   }`}
                 >
@@ -308,7 +449,7 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
               ))}
             </div>
           </section>
-        )}
+        ) : null}
 
         {/* Aspect Ratio */}
         {currentModel.happyHorseMode !== "i2v" && (
@@ -316,21 +457,49 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
           <label className="block text-xs font-medium text-gray-500 mb-2">
             Aspect Ratio
           </label>
-          <div className="grid grid-cols-3 gap-1.5">
-            {visibleRatios.map((r) => (
+          <div
+            className="ratio-picker glass-control rounded-2xl border p-3"
+          >
+            <div className="mb-3 flex items-center gap-3">
               <button
-                key={r.value}
-                onClick={() => setParams({ ratio: r.value })}
-                className={`param-option flex items-center justify-center gap-1 py-2 rounded-xl text-xs font-medium border transition-all ${
-                  params.ratio === r.value
-                    ? "param-choice-selected border-primary-400 bg-primary-50 text-primary-700"
-                    : "border-gray-200 text-gray-600 hover:border-gray-300"
-                }`}
+                type="button"
+                onClick={cycleAspectRatio}
+                className="ratio-preview-button"
+                title="클릭해서 다음 비율"
+                aria-label="다음 비율로 변경"
               >
-                <RatioIcon ratio={r.value} />
-                {r.label}
+                <RatioPreview ratio={selectedRatio.value} />
               </button>
-            ))}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-gray-800">
+                  {ratioLabel(selectedRatio.value, selectedRatio.label)}
+                </p>
+                <p className="mt-0.5 text-[11px] text-gray-400">
+                  {ratioDescription(selectedRatio.value)}
+                </p>
+              </div>
+            </div>
+            <div
+              className="ratio-chip-row"
+              role="listbox"
+              aria-label="Aspect Ratio"
+            >
+              {visibleRatios.map((r) => {
+                const active = params.ratio === r.value;
+                return (
+                  <button
+                    key={r.value}
+                    type="button"
+                    role="option"
+                    aria-selected={active}
+                    onClick={() => setParams({ ratio: r.value })}
+                    className={`ratio-chip ${active ? "ratio-chip-active" : ""}`}
+                  >
+                    {ratioLabel(r.value, r.label)}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </section>
         )}
@@ -355,31 +524,15 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
                   title={disabled ? "현재 모델에서 지원하지 않는 해상도입니다." : res}
                   className={`param-option relative py-2 rounded-lg text-xs font-medium transition-all ${
                     params.resolution === res
-                      ? "param-choice-selected bg-white text-gray-800 shadow-sm"
+                      ? "param-choice-selected text-gray-800"
                       : "text-gray-500 hover:text-gray-700"
                   } ${disabled ? "opacity-40 cursor-not-allowed hover:text-gray-500" : ""}`}
                 >
                   {res}
-                  {res === "1080p" && currentModel.provider === "byteplus" && (
-                    <span className="absolute -top-1 -right-1 bg-amber-400 text-white text-[8px] font-bold px-1 rounded-full">
-                      BETA
-                    </span>
-                  )}
                 </button>
               );
             })}
           </div>
-          {params.mode === "first_last_frame" && !isAlibaba && (
-            <p className="text-[11px] text-blue-600 mt-1.5">
-              ℹ First/Last Frame 모드: 출력 dimension은 (resolution × ratio) 조합으로 결정되며, 입력 이미지가 자동 크롭됩니다. Ratio는 <code className="bg-blue-50 px-1 rounded">Auto</code> 권장 (첫 프레임 비율 채택).
-            </p>
-          )}
-          {params.resolution === "1080p" && currentModel.provider === "byteplus" && (
-            <p className="text-[11px] text-amber-600 mt-1.5">
-              ⚠ 1080p는 공식 문서에 미기재된 실험 옵션입니다. API가 거부하면
-              720p로 전환하세요.
-            </p>
-          )}
         </section>
 
         {/* Video Duration */}
@@ -392,7 +545,7 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
               onClick={() => setParams({ durationType: "seconds" })}
               className={`param-option py-2 rounded-lg text-xs font-medium transition-all ${
                 params.durationType === "seconds"
-                  ? "param-choice-selected bg-white text-gray-800 shadow-sm"
+                  ? "param-choice-selected text-gray-800"
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
@@ -403,34 +556,42 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
               disabled={!canUseSmartDuration}
               className={`param-option py-2 rounded-lg text-xs font-medium transition-all ${
                 params.durationType === "smart"
-                  ? "param-choice-selected bg-white text-gray-800 shadow-sm"
+                  ? "param-choice-selected text-gray-800"
                   : "text-gray-500 hover:text-gray-700"
               } ${!canUseSmartDuration ? "opacity-40 cursor-not-allowed hover:text-gray-500" : ""}`}
             >
               Smart length
             </button>
           </div>
-          {params.durationType === "seconds" && (
-            <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min={durationMin}
-                max={15}
-                step={1}
-                value={params.duration}
-                onChange={(e) =>
-                  setParams({ duration: Number(e.target.value) })
-                }
-                className="flex-1 accent-primary-500 h-1.5"
-              />
-              <div className="flex items-center gap-1 bg-surface-100 rounded-lg px-3 py-1.5 min-w-[60px] justify-center">
-                <span className="text-sm font-medium text-gray-700">
-                  {params.duration}
-                </span>
+          <div
+            className={`flex items-center gap-3 transition-opacity ${
+              params.durationType === "smart" ? "opacity-55" : ""
+            }`}
+          >
+            <input
+              type="range"
+              min={durationMin}
+              max={15}
+              step={1}
+              value={params.duration}
+              disabled={params.durationType === "smart"}
+              onChange={(e) =>
+                setParams({ duration: Number(e.target.value) })
+              }
+              style={
+                { "--range-progress": `${durationProgress}%` } as CSSProperties
+              }
+              className="range-control flex-1 h-1.5"
+            />
+            <div className="flex items-center gap-1 bg-surface-100 rounded-lg px-3 py-1.5 min-w-[60px] justify-center">
+              <span className="text-sm font-medium text-gray-700">
+                {params.durationType === "smart" ? "Auto" : params.duration}
+              </span>
+              {params.durationType === "seconds" && (
                 <span className="text-xs text-gray-400">s</span>
-              </div>
+              )}
             </div>
-          )}
+          </div>
         </section>
 
         {/* Output Count */}
@@ -448,7 +609,10 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
               onChange={(e) =>
                 setParams({ outputCount: Number(e.target.value) })
               }
-              className="flex-1 accent-primary-500 h-1.5"
+              style={
+                { "--range-progress": `${outputProgress}%` } as CSSProperties
+              }
+              className="range-control flex-1 h-1.5"
             />
             <div className="flex items-center gap-1 bg-surface-100 rounded-lg px-3 py-1.5 min-w-[75px] justify-center">
               <span className="text-sm font-medium text-gray-700">
@@ -493,7 +657,7 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
           )}
         </section>
 
-        <hr className="border-gray-100" />
+        <hr className="border-white/50" />
 
         {/* Seed */}
         <section>
@@ -506,11 +670,11 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
               value={params.seed}
               onChange={(e) => setParams({ seed: e.target.value })}
               placeholder="Leave empty for random"
-              className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent"
+              className="glass-control flex-1 px-3 py-2 border border-white/60 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent"
             />
             <button
               onClick={randomSeed}
-              className="p-2 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-400 hover:text-gray-600 transition-colors"
+              className="glass-chip p-2 rounded-xl text-gray-400 hover:text-gray-600 transition-colors"
               title="Random seed"
             >
               <Dices className="w-4 h-4" />
@@ -523,7 +687,7 @@ export default function ModelParams({ onClose }: { onClose?: () => void }) {
         </section>
 
         {/* Advanced */}
-        <section className="border-t border-gray-100 pt-4">
+        <section className="border-t border-white/50 pt-4">
           <button
             onClick={() => setAdvancedOpen(!advancedOpen)}
             className="flex items-center justify-between w-full text-sm font-medium text-gray-700"

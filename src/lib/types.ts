@@ -49,7 +49,6 @@ export const MODELS: ModelOption[] = [
     id: "dreamina-seedance-2-0-260128",
     name: "Seedance 2.0",
     provider: "byteplus",
-    badge: "Recommended",
     versionLabel: "260128",
     supports1080p: true,
     supports480p: true,
@@ -73,7 +72,6 @@ export const MODELS: ModelOption[] = [
     id: "happyhorse-1.0-t2v",
     name: "HappyHorse 1.0 Text-to-video",
     provider: "alibaba",
-    badge: "Alibaba",
     versionLabel: "DashScope",
     supports1080p: true,
     supports480p: false,
@@ -140,6 +138,7 @@ export interface ReferenceAsset {
 export interface GenerationTask {
   id: string;
   taskId: string;
+  demo?: boolean;
   prompt: string;
   status: "pending" | "queued" | "running" | "succeeded" | "failed" | "cancelled" | "expired";
   videoUrl?: string;
