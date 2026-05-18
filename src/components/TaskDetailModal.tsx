@@ -27,7 +27,7 @@ import {
   markTaskDownloaded,
   subscribeDownloadedTasks,
 } from "@/lib/downloadState";
-import { costFromUsage, getModelOption, isAlibabaModel } from "@/lib/types";
+import { costFromUsage, formatKrw, getModelOption, isAlibabaModel } from "@/lib/types";
 import type { GenerationTask, ReferenceAsset } from "@/lib/types";
 import GenerationFX from "./GenerationFX";
 
@@ -437,7 +437,7 @@ export default function TaskDetailModal({
                     <>
                       <dt className="text-gray-400">Cost</dt>
                       <dd className="text-gray-700">
-                        ${actualCost.toFixed(3)}
+                        {formatKrw(actualCost)}
                       </dd>
                     </>
                   )}

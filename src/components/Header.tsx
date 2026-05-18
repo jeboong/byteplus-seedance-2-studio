@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  BellRing,
   FlaskConical,
   KeyRound,
   LogOut,
@@ -9,6 +10,11 @@ import {
   Settings,
 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
+import {
+  GENERATION_CONFIRM_CHANGE_EVENT,
+  isGenerationConfirmEnabled,
+  setGenerationConfirmEnabled,
+} from "@/lib/generationConfirm";
 import ThemeToggle from "./ThemeToggle";
 
 function openOnboarding(stage: "intro" | "setup") {
@@ -23,7 +29,29 @@ export default function Header() {
   const activeKey = apiKey || alibabaApiKey;
   const masked = activeKey ? `...${activeKey.slice(-6)}` : "";
   const [open, setOpen] = useState(false);
+  const [generationConfirmEnabled, setGenerationConfirmEnabledState] =
+    useState(true);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const syncGenerationConfirm = () => {
+      setGenerationConfirmEnabledState(isGenerationConfirmEnabled());
+    };
+    syncGenerationConfirm();
+    window.addEventListener(
+      GENERATION_CONFIRM_CHANGE_EVENT,
+      syncGenerationConfirm
+    );
+    window.addEventListener("storage", syncGenerationConfirm);
+    return () => {
+      window.removeEventListener(
+        GENERATION_CONFIRM_CHANGE_EVENT,
+        syncGenerationConfirm
+      );
+      window.removeEventListener("storage", syncGenerationConfirm);
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -104,6 +132,22 @@ export default function Header() {
               <span
                 className={`app-settings-switch ${
                   demoMode ? "app-settings-switch-on" : ""
+                }`}
+              />
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setGenerationConfirmEnabled(!generationConfirmEnabled)
+              }
+              aria-pressed={generationConfirmEnabled}
+              className="app-settings-item"
+            >
+              <BellRing className="h-4 w-4" />
+              <span className="flex-1 text-left">생성 경고</span>
+              <span
+                className={`app-settings-switch ${
+                  generationConfirmEnabled ? "app-settings-switch-on" : ""
                 }`}
               />
             </button>

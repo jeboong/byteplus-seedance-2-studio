@@ -14,11 +14,13 @@ import {
   ASPECT_RATIOS,
   RATIO_ICONS,
   MODELS,
+  formatKrw,
   getModelOption,
   isAlibabaModel,
   minDurationForModel,
   supportsAspectRatio,
   supportsSmartDuration,
+  usdToKrw,
   type AspectRatio,
   type ModelId,
 } from "@/lib/types";
@@ -362,15 +364,15 @@ export default function ModelParams({
                         ) : (
                           <>
                             <span>
-                              Video input: ${m.pricing.standard.includeVideoInput}/M
+                              Video input: {formatKrw(usdToKrw(m.pricing.standard.includeVideoInput))}/M
                             </span>
                             <span>
-                              No video: ${m.pricing.standard.excludeVideoInput}/M
+                              No video: {formatKrw(usdToKrw(m.pricing.standard.excludeVideoInput))}/M
                             </span>
                             {m.pricing.p1080 && (
                               <span>
-                                1080p: ${m.pricing.p1080.includeVideoInput}/$
-                                {m.pricing.p1080.excludeVideoInput}/M
+                                1080p: {formatKrw(usdToKrw(m.pricing.p1080.includeVideoInput))}/
+                                {formatKrw(usdToKrw(m.pricing.p1080.excludeVideoInput))}/M
                               </span>
                             )}
                           </>

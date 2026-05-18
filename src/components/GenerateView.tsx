@@ -21,12 +21,23 @@ import {
   VolumeX,
 } from "lucide-react";
 import { useAppStore, hydrateTasks } from "@/lib/store";
-import { createGenerationTask, getTaskStatus } from "@/lib/api";
+import {
+  createGenerationTask,
+  getTaskStatus,
+  reportUsageOnce,
+} from "@/lib/api";
+import {
+  GENERATION_CONFIRM_CHANGE_EVENT,
+  GENERATION_CONFIRM_COUNTDOWN_SECONDS,
+  isGenerationConfirmEnabled,
+  setGenerationConfirmEnabled,
+} from "@/lib/generationConfirm";
 import {
   ASPECT_RATIOS,
   RATIO_ICONS,
   estimateCost,
   estimateTokens,
+  formatKrw,
   getModelOption,
   isAlibabaModel,
   minDurationForModel,
@@ -167,8 +178,6 @@ function clipboardFilesFromData(data: DataTransfer | null): File[] {
 
 const DEMO_PENDING_MS = 3000;
 const DEMO_GENERATING_MS = 10000;
-const GENERATION_CONFIRM_COUNTDOWN_SECONDS = 15;
-const GENERATION_CONFIRM_SKIP_KEY = "sd2_skip_generation_confirm";
 
 export default function GenerateView() {
   const {
@@ -227,6 +236,8 @@ export default function GenerateView() {
   const mainRef = useRef<HTMLDivElement>(null);
   const resultsScrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
+  const paramsPopoverRef = useRef<HTMLDivElement>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const firstFrameInputRef = useRef<HTMLInputElement>(null);
   const lastFrameInputRef = useRef<HTMLInputElement>(null);
   const referenceFileInputRef = useRef<HTMLInputElement>(null);
@@ -266,9 +277,22 @@ export default function GenerateView() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    setSkipGenerationConfirm(
-      localStorage.getItem(GENERATION_CONFIRM_SKIP_KEY) === "1"
+    const syncGenerationConfirm = () => {
+      setSkipGenerationConfirm(!isGenerationConfirmEnabled());
+    };
+    syncGenerationConfirm();
+    window.addEventListener(
+      GENERATION_CONFIRM_CHANGE_EVENT,
+      syncGenerationConfirm
     );
+    window.addEventListener("storage", syncGenerationConfirm);
+    return () => {
+      window.removeEventListener(
+        GENERATION_CONFIRM_CHANGE_EVENT,
+        syncGenerationConfirm
+      );
+      window.removeEventListener("storage", syncGenerationConfirm);
+    };
   }, []);
 
   useEffect(() => {
@@ -287,6 +311,29 @@ export default function GenerateView() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [activeQuickPanel, paramsOpen]);
+
+  useEffect(() => {
+    if (!paramsOpen) return;
+    const handleParamsPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (
+        paramsPopoverRef.current?.contains(target) ||
+        settingsButtonRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setParamsOpen(false);
+    };
+    document.addEventListener("pointerdown", handleParamsPointerDown, true);
+    return () => {
+      document.removeEventListener(
+        "pointerdown",
+        handleParamsPointerDown,
+        true
+      );
+    };
+  }, [paramsOpen]);
 
   useEffect(() => {
     if (!confirmOpen) return;
@@ -1310,6 +1357,9 @@ export default function GenerateView() {
               actualRatio: result.ratio,
               actualResolution: result.resolution,
             });
+            if (!isAlibabaModel(taskParams.modelId)) {
+              void reportUsageOnce(taskId, result.usage);
+            }
             if (pollingRef.current[localId]) {
               clearInterval(pollingRef.current[localId]);
               delete pollingRef.current[localId];
@@ -1421,6 +1471,22 @@ export default function GenerateView() {
           });
         }, DEMO_PENDING_MS);
         window.setTimeout(() => {
+          const demoTokens = estimateTokens(
+            singleParams,
+            snapshotRefs.some((r) => r.type === "video")
+          );
+          const demoUsage = {
+            total_tokens: demoTokens,
+            completion_tokens: demoTokens,
+            output_video_duration:
+              singleParams.durationType === "seconds"
+                ? singleParams.duration
+                : 5,
+            video_count: 1,
+            SR: singleParams.resolution.replace("p", ""),
+            ratio:
+              singleParams.ratio === "adaptive" ? "16:9" : singleParams.ratio,
+          };
           updateTask(localId, {
             status: "succeeded",
             videoUrl: demoVideoUrl,
@@ -1432,17 +1498,10 @@ export default function GenerateView() {
             actualRatio:
               singleParams.ratio === "adaptive" ? "16:9" : singleParams.ratio,
             actualResolution: singleParams.resolution,
-            usage: {
-              total_tokens: 108000,
-              output_video_duration:
-                singleParams.durationType === "seconds"
-                  ? singleParams.duration
-                  : 5,
-              video_count: 1,
-              SR: singleParams.resolution.replace("p", ""),
-              ratio:
-                singleParams.ratio === "adaptive" ? "16:9" : singleParams.ratio,
-            },
+            usage: demoUsage,
+          });
+          void reportUsageOnce(`demo-${localId}`, demoUsage, {
+            target: "test",
           });
         }, DEMO_PENDING_MS + DEMO_GENERATING_MS);
       });
@@ -1478,8 +1537,8 @@ export default function GenerateView() {
   const executeConfirmedGenerate = useCallback(() => {
     if (confirmExecutingRef.current) return;
     confirmExecutingRef.current = true;
-    if (skipConfirmCheckedRef.current && typeof window !== "undefined") {
-      localStorage.setItem(GENERATION_CONFIRM_SKIP_KEY, "1");
+    if (skipConfirmCheckedRef.current) {
+      setGenerationConfirmEnabled(false);
       setSkipGenerationConfirm(true);
     }
     setConfirmOpen(false);
@@ -1961,7 +2020,10 @@ export default function GenerateView() {
                 <div
                   className="px-4 py-2"
                   data-prompt-editor-region
-                  onPointerDown={() => setActiveQuickPanel(null)}
+                  onPointerDown={() => {
+                    setParamsOpen(false);
+                    setActiveQuickPanel(null);
+                  }}
                 >
                   <PromptEditor
                     ref={promptEditorRef}
@@ -1970,6 +2032,7 @@ export default function GenerateView() {
                     onPaste={handlePaste}
                     onFocus={() => {
                       setPromptExpanded(true);
+                      setParamsOpen(false);
                       setActiveQuickPanel(null);
                     }}
                     onBlur={() => {}}
@@ -2158,9 +2221,10 @@ export default function GenerateView() {
                     <span className="hidden min-w-0 shrink truncate text-[10px] text-gray-400 xl:inline">
                       {isAlibaba
                         ? "DashScope usage"
-                        : `~${(estimateTokens(params, hasVideoRef) / 1000).toFixed(0)}K tokens · $${cost.toFixed(3)}`}
+                        : `~${(estimateTokens(params, hasVideoRef) / 1000).toFixed(0)}K tokens · ${formatKrw(cost)}`}
                     </span>
                     <button
+                      ref={settingsButtonRef}
                       type="button"
                       onClick={() => {
                         setActiveQuickPanel(null);
@@ -2372,6 +2436,7 @@ export default function GenerateView() {
               )}
               {paramsOpen && (
                 <div
+                  ref={paramsPopoverRef}
                   className="composer-settings-popover pointer-events-auto absolute right-0 z-50"
                   style={{ bottom: "3.55rem" }}
                   data-no-composer-drag
@@ -2427,6 +2492,10 @@ export default function GenerateView() {
                     {summaryDurationLabel} · {params.resolution} ·{" "}
                     {composerRatioLabel}
                   </span>
+                </div>
+                <div className="generation-confirm-prompt">
+                  <label>Prompt</label>
+                  <div>{prompt.trim() || "(no prompt)"}</div>
                 </div>
                 <label className="generation-confirm-check">
                   <input

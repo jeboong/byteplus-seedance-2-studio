@@ -39,6 +39,34 @@ function apiError(data: unknown, fallback: string): string {
   return fallback;
 }
 
+const USAGE_REPORTED_TASKS_KEY = "sd2_usage_reported_tasks";
+
+function getReportedUsageTasks(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(USAGE_REPORTED_TASKS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter(Boolean) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function markUsageTaskReported(taskId: string) {
+  if (typeof window === "undefined") return;
+  const tasks = getReportedUsageTasks();
+  tasks.add(taskId);
+  const compact = Array.from(tasks).slice(-1000);
+  window.localStorage.setItem(
+    USAGE_REPORTED_TASKS_KEY,
+    JSON.stringify(compact)
+  );
+}
+
+function hasUsageTaskReported(taskId: string): boolean {
+  return getReportedUsageTasks().has(taskId);
+}
+
 function expandHappyHorseReferenceTags(
   prompt: string,
   references: ReferenceAsset[]
@@ -243,6 +271,51 @@ export async function getTaskStatus(apiKey: string, taskId: string, modelId?: Mo
   const data = await readApiResponse(res);
   if (!res.ok) throw new Error(apiError(data, `API Error: ${res.status}`));
   return data;
+}
+
+export async function reportUsageOnce(
+  taskId: string,
+  usage?: {
+    completion_tokens?: number;
+    total_tokens?: number;
+  },
+  options?: { target?: "production" | "test" }
+) {
+  const totalTokens = usage?.total_tokens;
+  if (
+    !taskId ||
+    typeof totalTokens !== "number" ||
+    !Number.isFinite(totalTokens) ||
+    totalTokens <= 0 ||
+    hasUsageTaskReported(taskId)
+  ) {
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/usage-report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        task_id: taskId,
+        total_tokens: totalTokens,
+        completion_tokens: usage?.completion_tokens,
+        target: options?.target ?? "test",
+        timestamp: Date.now(),
+      }),
+    });
+    const data = await readApiResponse(res);
+    if (res.ok && (data as Record<string, unknown>).ok !== false) {
+      markUsageTaskReported(taskId);
+    } else {
+      console.warn(
+        "[usage-report] Tracker rejected usage report:",
+        apiError(data, `HTTP ${res.status}`)
+      );
+    }
+  } catch (error) {
+    console.warn("[usage-report] Tracker POST failed:", error);
+  }
 }
 
 export async function deleteTask(apiKey: string, taskId: string, modelId?: ModelId) {

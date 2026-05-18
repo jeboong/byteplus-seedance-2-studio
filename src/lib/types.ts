@@ -239,6 +239,19 @@ export function maxDurationForModel(_modelId: ModelId): number {
 }
 
 const FRAME_RATE = 24;
+export const USD_TO_KRW_RATE = 1505;
+
+const KRW_FORMATTER = new Intl.NumberFormat("ko-KR", {
+  maximumFractionDigits: 0,
+});
+
+export function usdToKrw(usd: number): number {
+  return Math.round(usd * USD_TO_KRW_RATE);
+}
+
+export function formatKrw(krw: number): string {
+  return `${KRW_FORMATTER.format(Math.round(krw))}원`;
+}
 
 const OUTPUT_DIMENSIONS: Record<
   Resolution,
@@ -357,11 +370,18 @@ export function tokenRatePerMillion(
     : pricing.excludeVideoInput;
 }
 
-export function estimateCost(params: ModelParams, hasVideoRef: boolean): number {
+export function estimateCostUsd(
+  params: ModelParams,
+  hasVideoRef: boolean
+): number {
   if (isAlibabaModel(params.modelId)) return 0;
   const ratePerM = tokenRatePerMillion(params, hasVideoRef);
   const tokens = estimateTokens(params, hasVideoRef);
   return Math.round((tokens / 1_000_000) * ratePerM * 1000) / 1000;
+}
+
+export function estimateCost(params: ModelParams, hasVideoRef: boolean): number {
+  return usdToKrw(estimateCostUsd(params, hasVideoRef));
 }
 
 export function ratePerKTokens(params: ModelParams, hasVideoRef: boolean): number {
@@ -369,7 +389,7 @@ export function ratePerKTokens(params: ModelParams, hasVideoRef: boolean): numbe
   return Math.round((ratePerM / 1000) * 10000) / 10000;
 }
 
-export function costFromUsage(
+export function costFromUsageUsd(
   params: ModelParams,
   hasVideoRef: boolean,
   totalTokens: number
@@ -377,4 +397,12 @@ export function costFromUsage(
   if (isAlibabaModel(params.modelId)) return 0;
   const ratePerM = tokenRatePerMillion(params, hasVideoRef);
   return Math.round((totalTokens / 1_000_000) * ratePerM * 1000) / 1000;
+}
+
+export function costFromUsage(
+  params: ModelParams,
+  hasVideoRef: boolean,
+  totalTokens: number
+): number {
+  return usdToKrw(costFromUsageUsd(params, hasVideoRef, totalTokens));
 }
