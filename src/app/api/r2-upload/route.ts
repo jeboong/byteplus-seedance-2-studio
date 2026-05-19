@@ -117,15 +117,17 @@ export async function POST(req: NextRequest) {
       region: "auto",
     });
     const contentType = file.type || "application/octet-stream";
+    const body = await file.arrayBuffer();
     const uploadRes = await client.fetch(
       objectApiUrl(config.accountId, config.bucket, key),
       {
         method: "PUT",
         headers: {
           "content-type": contentType,
+          "content-length": String(body.byteLength),
           "cache-control": "public, max-age=31536000, immutable",
         },
-        body: await file.arrayBuffer(),
+        body,
         signal: AbortSignal.timeout(120_000),
       }
     );
