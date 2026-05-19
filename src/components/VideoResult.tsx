@@ -17,6 +17,7 @@ import {
   RefreshCw,
   X,
   ChevronLeft,
+  ChevronDown,
   LayoutList,
   LayoutGrid,
   Trash2,
@@ -396,18 +397,64 @@ function InlineTaskDetails({
   task: GenerationTask;
 }) {
   const [promptCopied, setPromptCopied] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const taskModel = getModelOption(task.params.modelId);
   const actualDuration =
     task.actualDuration ??
     (task.params.durationType === "seconds" ? task.params.duration : null);
   const usageTokens =
     task.usage?.total_tokens ?? task.usage?.completion_tokens ?? null;
+  const durationLabel =
+    actualDuration !== null
+      ? `${actualDuration}s`
+      : typeof task.actualFrames === "number"
+      ? `${task.actualFrames} frames`
+      : "Auto";
+  const elapsedLabel = getTaskElapsedLabel(task);
   const modeLabel =
     task.params.mode === "text"
       ? "Text"
       : task.params.mode === "first_last_frame"
       ? "Start/End"
       : "Reference";
+  const summaryItems = [
+    task.actualResolution || task.params.resolution,
+    task.actualRatio || task.params.ratio,
+    durationLabel,
+  ].filter(Boolean);
+  const detailItems: Array<{
+    label: string;
+    value: string;
+    wide?: boolean;
+  }> = [
+    {
+      label: "Model",
+      value: task.sourceModel || taskModel.name,
+      wide: true,
+    },
+    { label: "Mode", value: modeLabel },
+    { label: "Duration", value: durationLabel },
+    ...(typeof task.framesPerSecond === "number"
+      ? [{ label: "FPS", value: String(task.framesPerSecond) }]
+      : []),
+    { label: "Ratio", value: task.actualRatio || task.params.ratio },
+    {
+      label: "Resolution",
+      value: task.actualResolution || task.params.resolution,
+    },
+    ...(typeof task.generatedAudio === "boolean"
+      ? [{ label: "Audio", value: task.generatedAudio ? "On" : "Off" }]
+      : []),
+    ...(elapsedLabel ? [{ label: "Elapsed", value: elapsedLabel }] : []),
+    ...(task.serviceTier ? [{ label: "Tier", value: task.serviceTier }] : []),
+    { label: "Status", value: task.status },
+    ...(typeof task.seed === "number"
+      ? [{ label: "Seed", value: String(task.seed) }]
+      : []),
+    ...(typeof usageTokens === "number"
+      ? [{ label: "Tokens", value: usageTokens.toLocaleString() }]
+      : []),
+  ];
   const copyPrompt = useCallback(async () => {
     const text = task.prompt || "";
     if (!text) return;
@@ -445,64 +492,41 @@ function InlineTaskDetails({
         <p>{task.prompt || "(no prompt)"}</p>
       </section>
 
-      <section className="task-inline-block">
-        <div className="task-inline-label">Details</div>
-        <dl className="task-inline-dl">
-          <dt>Model</dt>
-          <dd>{task.sourceModel || taskModel.name}</dd>
-          <dt>Mode</dt>
-          <dd>{modeLabel}</dd>
-          <dt>Duration</dt>
-          <dd>
-            {actualDuration
-              ? `${actualDuration}s`
-              : typeof task.actualFrames === "number"
-              ? `${task.actualFrames} frames`
-              : "Auto"}
-          </dd>
-          {typeof task.framesPerSecond === "number" && (
-            <>
-              <dt>FPS</dt>
-              <dd>{task.framesPerSecond}</dd>
-            </>
-          )}
-          <dt>Ratio</dt>
-          <dd>{task.actualRatio || task.params.ratio}</dd>
-          <dt>Resolution</dt>
-          <dd>{task.actualResolution || task.params.resolution}</dd>
-          {typeof task.generatedAudio === "boolean" && (
-            <>
-              <dt>Audio</dt>
-              <dd>{task.generatedAudio ? "On" : "Off"}</dd>
-            </>
-          )}
-          {getTaskElapsedLabel(task) && (
-            <>
-              <dt>Elapsed</dt>
-              <dd>{getTaskElapsedLabel(task)}</dd>
-            </>
-          )}
-          {task.serviceTier && (
-            <>
-              <dt>Tier</dt>
-              <dd>{task.serviceTier}</dd>
-            </>
-          )}
-          <dt>Status</dt>
-          <dd>{task.status}</dd>
-          {typeof task.seed === "number" && (
-            <>
-              <dt>Seed</dt>
-              <dd>{task.seed}</dd>
-            </>
-          )}
-          {typeof usageTokens === "number" && (
-            <>
-              <dt>Tokens</dt>
-              <dd>{usageTokens.toLocaleString()}</dd>
-            </>
-          )}
-        </dl>
+      <section
+        className={`task-inline-detail-badges ${
+          detailsOpen ? "task-inline-detail-badges-open" : ""
+        }`}
+      >
+        <button
+          type="button"
+          className="task-inline-details-toggle"
+          onClick={() => setDetailsOpen((value) => !value)}
+          aria-expanded={detailsOpen}
+        >
+          <span className="task-inline-label">Details</span>
+          <span className="task-inline-summary">
+            {summaryItems.map((item) => (
+              <span key={item}>{item}</span>
+            ))}
+          </span>
+          <span>{detailsOpen ? "접기" : "펼치기"}</span>
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
+        {detailsOpen && (
+          <dl className="task-inline-badge-grid">
+            {detailItems.map((item) => (
+              <div
+                key={item.label}
+                className={`task-inline-badge ${
+                  item.wide ? "task-inline-badge-wide" : ""
+                }`}
+              >
+                <dt>{item.label}</dt>
+                <dd title={item.value}>{item.value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
       </section>
     </div>
   );
