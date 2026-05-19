@@ -385,6 +385,40 @@ export async function uploadFile(
   return data;
 }
 
+export async function uploadR2File(file: File): Promise<{
+  url: string;
+  key: string;
+  bytes: number;
+  filename: string;
+  mime_type?: string;
+} | null> {
+  const form = new FormData();
+  form.append("file", file);
+
+  const res = await fetch("/api/r2-upload", {
+    method: "POST",
+    body: form,
+  });
+
+  const data = await readApiResponse(res);
+  if (
+    res.status === 501 &&
+    data &&
+    typeof data === "object" &&
+    (data as Record<string, unknown>).configured === false
+  ) {
+    return null;
+  }
+  if (!res.ok) throw new Error(apiError(data, `R2 upload failed: ${res.status}`));
+  return data as {
+    url: string;
+    key: string;
+    bytes: number;
+    filename: string;
+    mime_type?: string;
+  };
+}
+
 export async function uploadAlibabaFile(
   apiKey: string,
   file: File,

@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { useAppStore } from "./store";
-import { uploadAlibabaFile, uploadFile } from "./api";
+import { uploadAlibabaFile, uploadFile, uploadR2File } from "./api";
 import {
   getModelOption,
   isAlibabaModel,
@@ -101,10 +101,9 @@ function newId() {
  * Shared upload handler used by ReferenceUpload (file picker) and
  * GenerateView (drag&drop / clipboard paste).
  *
- * - BytePlus image/audio → encoded as original base64 data URI inline.
- * - BytePlus video       → uploaded to BytePlus Files API when it can return
- *                          a provider-readable URL; otherwise use public URL
- *                          or asset://.
+ * - BytePlus local files → uploaded to R2 as public HTTP(S) URLs when R2 env is set.
+ * - BytePlus image/audio → falls back to original base64 data URI when R2 is unset.
+ * - BytePlus video       → falls back to BytePlus Files API when R2 is unset.
  * - HappyHorse image     → uploaded to ModelStudio temporary OSS and passed
  *                          to ModelStudio as an oss:// URL.
  */
@@ -225,45 +224,76 @@ export function useFileUpload() {
             setError(`이미지는 30MB 이하여야 합니다: ${file.name}`);
             continue;
           }
+          const tempId = newId();
+          let preview = "";
           try {
-            const dataUri = await fileToBase64(file);
+            preview = await fileToBase64(file);
             addReference({
-              id: newId(),
+              id: tempId,
               type,
-              url: dataUri,
+              url: preview,
               name: file.name || `image-${Date.now()}`,
               role,
-              preview: dataUri,
+              preview,
+              uploading: true,
             });
           } catch (e) {
             const msg = e instanceof Error ? e.message : "이미지 로드 실패";
             setError(`이미지 처리 실패 (${file.name}): ${msg}`);
+            continue;
+          }
+          try {
+            const result = await uploadR2File(file);
+            if (result) {
+              updateReference(tempId, {
+                url: result.url,
+                preview: result.url,
+                uploading: false,
+              });
+            } else {
+              updateReference(tempId, { uploading: false });
+            }
+          } catch (e) {
+            removeReference(tempId);
+            const msg = e instanceof Error ? e.message : "R2 업로드 실패";
+            setError(`이미지 R2 업로드 실패 (${file.name}): ${msg}`);
           }
         } else if (type === "audio") {
           if (file.size > MAX_AUDIO_BYTES) {
             setError(`오디오는 15MB 이하여야 합니다: ${file.name}`);
             continue;
           }
+          const tempId = newId();
+          addReference({
+            id: tempId,
+            type,
+            url: "",
+            name: file.name,
+            role,
+            uploading: true,
+          });
           try {
-            const dataUri = await fileToBase64(file);
-            addReference({
-              id: newId(),
-              type,
-              url: dataUri,
-              name: file.name,
-              role,
-            });
+            const result = await uploadR2File(file);
+            if (result) {
+              updateReference(tempId, {
+                url: result.url,
+                uploading: false,
+              });
+            } else {
+              const dataUri = await fileToBase64(file);
+              updateReference(tempId, {
+                url: dataUri,
+                uploading: false,
+              });
+            }
           } catch (e) {
-            const msg = e instanceof Error ? e.message : "오디오 로드 실패";
+            removeReference(tempId);
+            const msg = e instanceof Error ? e.message : "오디오 업로드 실패";
             setError(`오디오 처리 실패 (${file.name}): ${msg}`);
           }
         } else if (type === "video") {
           if (file.size > MAX_VIDEO_BYTES) {
             setError(`비디오는 50MB 이하여야 합니다: ${file.name}`);
-            continue;
-          }
-          if (!apiKey) {
-            setError("비디오 업로드를 위한 API 키가 없습니다.");
             continue;
           }
 
@@ -275,15 +305,26 @@ export function useFileUpload() {
             name: file.name,
             role,
             uploading: true,
-            uploadProvider: "byteplus",
           });
 
           try {
-            const result = await uploadFile(apiKey, file);
-            updateReference(tempId, {
-              url: result.url,
-              uploading: false,
-            });
+            const r2Result = await uploadR2File(file);
+            if (r2Result) {
+              updateReference(tempId, {
+                url: r2Result.url,
+                uploading: false,
+              });
+            } else {
+              if (!apiKey) {
+                throw new Error("R2 환경 변수가 없고 비디오 업로드를 위한 API 키도 없습니다.");
+              }
+              const result = await uploadFile(apiKey, file);
+              updateReference(tempId, {
+                url: result.url,
+                uploading: false,
+                uploadProvider: "byteplus",
+              });
+            }
           } catch (e) {
             removeReference(tempId);
             const msg = e instanceof Error ? e.message : "업로드 실패";

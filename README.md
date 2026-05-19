@@ -34,7 +34,7 @@
 
 | 제공자 | 지원 입력 | 로컬 파일 처리 | URL/Asset 입력 |
 |---|---|---|---|
-| BytePlus | 이미지 / 비디오 / 오디오 | 이미지는 Base64, 오디오는 Base64, 비디오는 Files API 업로드 후 URL 사용 | HTTP(S), `asset://`, `oss://` 형식 입력 가능 |
+| BytePlus | 이미지 / 비디오 / 오디오 | R2 설정 시 Cloudflare R2 공개 URL로 업로드. R2 미설정 시 이미지/오디오는 Base64, 비디오는 Files API로 폴백 | HTTP(S), `asset://`, `oss://` 형식 입력 가능 |
 | HappyHorse T2V | 프롬프트 | 첨부 없음 | 첨부 없음 |
 | HappyHorse I2V | 이미지 1개 + 프롬프트 | 이미지를 ModelStudio 임시 OSS로 업로드 | HTTP(S) 또는 `oss://` |
 | HappyHorse R2V | 이미지 1-9개 + 프롬프트 | 이미지를 ModelStudio 임시 OSS로 업로드 | HTTP(S) 또는 `oss://` |
@@ -79,6 +79,7 @@
 | 아이콘 | Lucide React |
 | BytePlus 인증 | ModelArk API Key, AK/SK HMAC 서명 |
 | Alibaba 인증 | ModelStudio API Key |
+| 파일 저장소 | Cloudflare R2 선택 지원 |
 
 ---
 
@@ -102,7 +103,17 @@ BYTEPLUS_SK=your_secret_key_here
 # 선택: usage tracker payload 라벨
 USAGE_TRACKER_TEAM=6팀
 USAGE_TRACKER_SOURCE=external
+
+# 선택: BytePlus 로컬 첨부를 Cloudflare R2 공개 URL로 업로드
+R2_ACCOUNT_ID=your_cloudflare_account_id
+R2_ACCESS_KEY_ID=your_r2_access_key_id
+R2_SECRET_ACCESS_KEY=your_r2_secret_access_key
+R2_BUCKET=your_bucket_name
+R2_PUBLIC_BASE_URL=https://media.example.com
+R2_PREFIX=seedance-references
 ```
+
+R2를 쓰려면 버킷에 공개 접근용 custom domain을 연결하고 `R2_PUBLIC_BASE_URL`에 그 주소를 넣습니다. 브라우저 미리보기와 다운로드 안정성을 위해 R2 CORS에는 앱 도메인의 `GET`, `HEAD`를 허용하세요.
 
 ### 3. 개발 서버 실행
 
@@ -132,6 +143,7 @@ http://localhost:3030
 
 - BytePlus ModelArk: Seedance 2.0 생성, BytePlus 파일 업로드, 작업 조회/삭제
 - Alibaba ModelStudio: HappyHorse 생성, HappyHorse 임시 OSS 이미지 업로드
+- Cloudflare R2: `.env.local`에 설정하면 BytePlus 로컬 첨부를 공개 URL로 먼저 업로드
 - Browse/Demo 모드: 키 없이 UI를 둘러보거나 데모 결과를 생성
 
 키는 브라우저 LocalStorage에 저장되고, 실제 API 호출은 `/api/*` 서버 라우트를 통해 프록시됩니다. 생성 API 키는 소스 코드에 하드코딩하지 않습니다.
@@ -148,6 +160,7 @@ src/
 │   │   ├── task/[id]/route.ts       # 작업 조회, BytePlus 작업 삭제
 │   │   ├── tasks/route.ts           # BytePlus 작업 목록
 │   │   ├── upload/route.ts          # BytePlus Files API 업로드
+│   │   ├── r2-upload/route.ts       # Cloudflare R2 공개 URL 업로드
 │   │   ├── alibaba-upload/route.ts  # HappyHorse 임시 OSS 업로드
 │   │   ├── assets/route.ts          # BytePlus Asset Library
 │   │   └── usage-report/route.ts    # BytePlus usage tracker POST
@@ -183,6 +196,7 @@ src/
 | `DELETE /api/task/[id]` | BytePlus `DELETE /contents/generations/tasks/{id}` | Bearer ModelArk API Key |
 | `GET /api/tasks` | BytePlus `GET /contents/generations/tasks` | Bearer ModelArk API Key |
 | `POST /api/upload` | BytePlus `POST /files` + file content URL 조회 | Bearer ModelArk API Key |
+| `POST /api/r2-upload` | Cloudflare R2 S3-compatible `PutObject` | 서버 `.env.local` R2 키 |
 | `POST /api/alibaba-upload` | Alibaba ModelStudio 임시 업로드 policy + OSS 업로드 | Bearer ModelStudio API Key |
 | `POST /api/assets` | BytePlus Asset Library control-plane actions | AK/SK HMAC |
 | `POST /api/usage-report` | Google Apps Script usage tracker | 온보딩/설정에 저장된 Apps Script URL |
@@ -193,7 +207,7 @@ src/
 
 - 이 앱은 개발용 클라이언트입니다. 서버 라우트가 사용자 입력 API 키를 외부 제공자에 전달하므로 배포 시 접근 통제와 로그 정책을 별도로 점검해야 합니다.
 - HappyHorse 작업 삭제는 현재 앱에서 외부 삭제 API를 호출하지 않고 204로 처리합니다.
-- BytePlus Files API가 공개 다운로드 URL을 반환하지 않으면 로컬 비디오 첨부가 실패할 수 있습니다. 이 경우 공개 HTTP(S) URL 또는 `asset://` 입력을 사용하세요.
+- R2를 설정하지 않은 상태에서 BytePlus Files API가 공개 다운로드 URL을 반환하지 않으면 로컬 비디오 첨부가 실패할 수 있습니다. 이 경우 R2를 설정하거나 공개 HTTP(S) URL 또는 `asset://` 입력을 사용하세요.
 - BytePlus Asset Library의 General Asset Group은 콘솔에서 Asset Service 활성화가 필요합니다.
 - 실사 인물 자산은 BytePlus 콘솔의 모바일 QR 인증 플로우가 필요하며, 일반 프로그래밍 업로드로 대체할 수 없습니다.
 - 1080p와 일부 모델 옵션은 제공자 응답 정책에 따라 거부될 수 있습니다.

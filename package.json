@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "aws4fetch": "^1.0.20",
     "idb-keyval": "^6.2.2",
     "localtunnel": "^2.0.2",
     "lucide-react": "^0.460.0",
