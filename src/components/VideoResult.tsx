@@ -835,6 +835,94 @@ function TaskCard({
     [deleting, handleDelete]
   );
 
+  const mediaPanel = isFinished && task.videoUrl ? (
+    <div
+      ref={mediaRef}
+      className="task-card-media bg-black overflow-hidden flex-shrink-0 relative group cursor-pointer"
+      onClick={openDetailFromMedia}
+      title={compact ? "상세보기" : showInlineDetails ? undefined : "상세보기"}
+    >
+      <HoverVideo
+        src={task.videoUrl}
+        compact={compact}
+        fill
+        controls={showInlineDetails}
+        fit={showInlineDetails ? "contain" : "cover"}
+        ratio={task.actualRatio || task.params.ratio}
+      />
+    </div>
+  ) : isGenerating ? (
+    <div className="task-card-media task-card-media-generating overflow-hidden flex-shrink-0 relative">
+      <GenerationState
+        compact={compact}
+        label={cfg.label}
+        neutral={task.status === "pending"}
+      />
+      {generationElapsedLabel && (
+        <div className="task-generation-elapsed" aria-label="생성 경과 시간">
+          {generationElapsedLabel}
+        </div>
+      )}
+      {canCancel && (
+        <button
+          type="button"
+          onClick={handleCancel}
+          disabled={deleting}
+          className="task-generation-cancel-button"
+          title="대기 중인 생성 요청 취소"
+          aria-label="대기 중인 생성 요청 취소"
+        >
+          {deleting ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Ban className="h-3 w-3" />
+          )}
+          <span>생성 취소</span>
+        </button>
+      )}
+    </div>
+  ) : (
+    <div className="task-card-media task-card-media-status flex flex-col items-center justify-center gap-2 flex-shrink-0">
+      <Icon
+        className={`${compact ? "w-6 h-6" : "w-7 h-7"} ${cfg.color}`}
+      />
+      <span
+        className={`${compact ? "text-xs" : "text-sm"} font-medium ${
+          cfg.color
+        }`}
+      >
+        {cfg.label}
+      </span>
+      {task.error && (
+        <p className="text-xs text-red-500 max-w-xs text-center mt-1 px-4">
+          {task.error}
+        </p>
+      )}
+      {effectiveStatus === "expired" && task.status === "succeeded" && (
+        <p className="text-[10px] text-orange-500/80 max-w-xs text-center mt-1 px-4">
+          비디오 URL이 만료되었습니다 (24시간). 새로 생성해 주세요.
+        </p>
+      )}
+      {task.status === "failed" && (
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={deleting}
+          className="task-status-delete-button"
+          title="실패한 요청 삭제"
+          aria-label="실패한 요청 삭제"
+        >
+          {deleting ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <XCircle className="h-3.5 w-3.5" />
+          )}
+          <span>삭제</span>
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <div
       data-task-card
@@ -899,97 +987,17 @@ function TaskCard({
           </button>
         </div>
       )}
-      {isFinished && task.videoUrl ? (
+      {showInlineDetails ? (
         <div
-          className={showInlineDetails ? "task-expanded-layout" : "task-media-shell"}
+          className="task-expanded-layout"
           data-no-task-drag
         >
-          <div
-            ref={mediaRef}
-            className="task-card-media bg-black overflow-hidden flex-shrink-0 relative group cursor-pointer"
-            onClick={openDetailFromMedia}
-            title={compact ? "상세보기" : showInlineDetails ? undefined : "상세보기"}
-          >
-            <HoverVideo
-              src={task.videoUrl}
-              compact={compact}
-              fill
-              controls={showInlineDetails}
-              fit={showInlineDetails ? "contain" : "cover"}
-              ratio={task.actualRatio || task.params.ratio}
-            />
-          </div>
-          {showInlineDetails && <InlineTaskDetails task={task} />}
-        </div>
-      ) : isGenerating ? (
-        <div className="task-card-media task-card-media-generating overflow-hidden flex-shrink-0 relative">
-          <GenerationState
-            compact={compact}
-            label={cfg.label}
-            neutral={task.status === "pending"}
-          />
-          {generationElapsedLabel && (
-            <div className="task-generation-elapsed" aria-label="생성 경과 시간">
-              {generationElapsedLabel}
-            </div>
-          )}
-          {canCancel && (
-            <button
-              type="button"
-              onClick={handleCancel}
-              disabled={deleting}
-              className="task-generation-cancel-button"
-              title="대기 중인 생성 요청 취소"
-              aria-label="대기 중인 생성 요청 취소"
-            >
-              {deleting ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Ban className="h-3 w-3" />
-              )}
-              <span>생성 취소</span>
-            </button>
-          )}
+          {mediaPanel}
+          <InlineTaskDetails task={task} />
         </div>
       ) : (
-        <div className="task-card-media task-card-media-status flex flex-col items-center justify-center gap-2 flex-shrink-0">
-          <Icon
-            className={`${compact ? "w-6 h-6" : "w-7 h-7"} ${cfg.color}`}
-          />
-          <span
-            className={`${compact ? "text-xs" : "text-sm"} font-medium ${
-              cfg.color
-            }`}
-          >
-            {cfg.label}
-          </span>
-          {task.error && (
-            <p className="text-xs text-red-500 max-w-xs text-center mt-1 px-4">
-              {task.error}
-            </p>
-          )}
-          {effectiveStatus === "expired" && task.status === "succeeded" && (
-            <p className="text-[10px] text-orange-500/80 max-w-xs text-center mt-1 px-4">
-              비디오 URL이 만료되었습니다 (24시간). 새로 생성해 주세요.
-            </p>
-          )}
-          {task.status === "failed" && (
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={deleting}
-              className="task-status-delete-button"
-              title="실패한 요청 삭제"
-              aria-label="실패한 요청 삭제"
-            >
-              {deleting ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <XCircle className="h-3.5 w-3.5" />
-              )}
-              <span>삭제</span>
-            </button>
-          )}
+        <div className="task-media-shell" data-no-task-drag>
+          {mediaPanel}
         </div>
       )}
 
@@ -1135,9 +1143,6 @@ function TaskCard({
           </div>
         </div>
       </div>
-      {expanded && !compact && !isFinished && (
-        <InlineTaskDetails task={task} />
-      )}
       {previewAsset && (
         <AttachmentPreviewOverlay
           asset={previewAsset}
