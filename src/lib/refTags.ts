@@ -39,10 +39,27 @@ export function getRefTags(refs: ReferenceAsset[]): Record<string, string> {
  *   expandPromptTags("Boy from @img1 hugs corgi from @img2")
  *   // → "Boy from [Image 1] hugs corgi from [Image 2]"
  */
-export function expandPromptTags(prompt: string): string {
+export function expandPromptTags(
+  prompt: string,
+  activeRefs?: ReferenceAsset[]
+): string {
+  const allowedTags = activeRefs
+    ? new Set(
+        Object.values(getRefTags(activeRefs)).flatMap((tag) => {
+          const n = tag.replace(/^\D+/, "");
+          if (tag.startsWith("@img")) return [tag, `@image${n}`];
+          if (tag.startsWith("@vid")) return [tag, `@video${n}`];
+          return [tag, `@audio${n}`];
+        }).map((tag) => tag.toLowerCase())
+      )
+    : null;
+
   return prompt.replace(
     /@(img|image|vid|video|aud|audio)(\d+)/gi,
-    (_match, prefix: string, n: string) => {
+    (match, prefix: string, n: string) => {
+      if (allowedTags && !allowedTags.has(match.toLowerCase())) {
+        return match;
+      }
       const lc = prefix.toLowerCase() as RefTagAlias;
       const word = lc === "img" || lc === "image"
         ? "Image"

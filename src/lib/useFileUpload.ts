@@ -106,7 +106,7 @@ function newId() {
  *                          a provider-readable URL; otherwise use public URL
  *                          or asset://.
  * - HappyHorse image     → uploaded to ModelStudio temporary OSS and passed
- *                          to DashScope as an oss:// URL.
+ *                          to ModelStudio as an oss:// URL.
  */
 export function useFileUpload() {
   const apiKey = useAppStore((s) => s.apiKey);

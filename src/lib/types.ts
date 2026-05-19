@@ -72,7 +72,7 @@ export const MODELS: ModelOption[] = [
     id: "happyhorse-1.0-t2v",
     name: "HappyHorse 1.0 Text-to-video",
     provider: "alibaba",
-    versionLabel: "DashScope",
+    versionLabel: "ModelStudio",
     supports1080p: true,
     supports480p: false,
     happyHorseMode: "t2v",
@@ -84,7 +84,7 @@ export const MODELS: ModelOption[] = [
     id: "happyhorse-1.0-i2v",
     name: "HappyHorse 1.0 Image-to-video",
     provider: "alibaba",
-    versionLabel: "DashScope",
+    versionLabel: "ModelStudio",
     supports1080p: true,
     supports480p: false,
     happyHorseMode: "i2v",
@@ -96,7 +96,7 @@ export const MODELS: ModelOption[] = [
     id: "happyhorse-1.0-r2v",
     name: "HappyHorse 1.0 Reference-to-video",
     provider: "alibaba",
-    versionLabel: "DashScope",
+    versionLabel: "ModelStudio",
     supports1080p: true,
     supports480p: false,
     happyHorseMode: "r2v",
@@ -230,6 +230,22 @@ export function isBytePlusModel(modelId: ModelId): boolean {
 
 export function isHappyHorseModel(modelId: ModelId): boolean {
   return isAlibabaModel(modelId);
+}
+
+export function isFrameReference(ref: ReferenceAsset): boolean {
+  return ref.role === "first_frame" || ref.role === "last_frame";
+}
+
+export function getGenerationReferences(
+  params: ModelParams,
+  references: ReferenceAsset[]
+): ReferenceAsset[] {
+  if (isAlibabaModel(params.modelId)) return references;
+  if (params.mode === "text") return [];
+  if (params.mode === "first_last_frame") {
+    return references.filter(isFrameReference);
+  }
+  return references.filter((ref) => !isFrameReference(ref));
 }
 
 export function supportsAspectRatio(modelId: ModelId, ratio: AspectRatio): boolean {

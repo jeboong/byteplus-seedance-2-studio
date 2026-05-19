@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const TRACKER_URL =
-  "https://script.google.com/macros/s/AKfycbyC53V4K-CHJnP86qIbBP0WmXZ4cDD9D3CFVmd8otL4ZThzpQ7RKhnCeIXgDu4y7CFrnQ/exec";
 const DEFAULT_TEAM = "6팀";
 const DEFAULT_SOURCE = "external";
 const MAX_REPORTED_TASKS = 5000;
@@ -32,6 +30,26 @@ function parseJson(text: string): Record<string, unknown> {
   }
 }
 
+function normalizeTrackerUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    if (
+      url.protocol !== "https:" ||
+      url.hostname !== "script.google.com" ||
+      !url.pathname.startsWith("/macros/s/") ||
+      !url.pathname.endsWith("/exec")
+    ) {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(req: NextRequest) {
   let body: Record<string, unknown>;
   try {
@@ -46,12 +64,17 @@ export async function POST(req: NextRequest) {
   const taskId = typeof body.task_id === "string" ? body.task_id.trim() : "";
   const totalTokens = toPositiveNumber(body.total_tokens);
   const completionTokens = toPositiveNumber(body.completion_tokens);
+  const trackerUrl = normalizeTrackerUrl(body.tracker_url);
 
   if (!taskId || !totalTokens) {
     return NextResponse.json(
       { ok: false, error: "task_id and total_tokens are required" },
       { status: 400 }
     );
+  }
+
+  if (!trackerUrl) {
+    return NextResponse.json({ ok: true, skipped: true });
   }
 
   if (reportedTaskIds.has(taskId)) {
@@ -78,7 +101,7 @@ export async function POST(req: NextRequest) {
   rememberReportedTask(taskId);
 
   try {
-    const res = await fetch(TRACKER_URL, {
+    const res = await fetch(trackerUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

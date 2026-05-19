@@ -75,14 +75,15 @@ function ThumbInline({
   const isImage = asset.type === "image";
   const roleLabel =
     asset.role === "first_frame"
-      ? "F"
+      ? "S"
       : asset.role === "last_frame"
-      ? "L"
+      ? "E"
       : "";
+  const tagNumber = tag?.match(/\d+/)?.[0];
 
   return (
     <div
-      className="glass-control relative w-12 h-12 rounded-lg overflow-hidden border flex items-center justify-center shrink-0"
+      className="task-reference-thumb glass-control relative w-8 h-8 rounded-md overflow-hidden border flex items-center justify-center shrink-0"
       title={`${tag ? `${tag} · ` : ""}${asset.name} (${asset.role || asset.type})`}
     >
       {isImage && asset.preview && !isAsset ? (
@@ -93,21 +94,21 @@ function ThumbInline({
           className="w-full h-full object-cover"
         />
       ) : isAsset ? (
-        <UserCheck className="w-4 h-4 text-green-500" />
+        <UserCheck className="w-3.5 h-3.5 text-green-500" />
       ) : asset.type === "video" ? (
-        <Film className="w-4 h-4 text-blue-400" />
+        <Film className="w-3.5 h-3.5 text-blue-400" />
       ) : asset.type === "audio" ? (
-        <Music className="w-4 h-4 text-purple-400" />
+        <Music className="w-3.5 h-3.5 text-purple-400" />
       ) : (
-        <ImageIcon className="w-4 h-4 text-gray-400" />
+        <ImageIcon className="w-3.5 h-3.5 text-gray-400" />
       )}
-      {tag && (
-        <span className="absolute top-0 left-0 bg-primary-500/90 text-white text-[8px] font-bold px-1 leading-tight rounded-br">
-          {tag.replace("@", "")}
+      {tagNumber && (
+        <span className="task-reference-tag-overlay">
+          {tagNumber}
         </span>
       )}
       {roleLabel && (
-        <span className="absolute bottom-0 right-0 bg-primary-500 text-white text-[8px] font-bold px-1 leading-tight rounded-tl">
+        <span className="absolute bottom-0 right-0 bg-primary-500 text-white text-[7px] font-bold px-1 leading-tight rounded-tl">
           {roleLabel}
         </span>
       )}
@@ -160,7 +161,7 @@ export default function TaskDetailModal({
   const usageLabel = getUsageLabel(task);
 
   const handleDownload = useCallback(async () => {
-    if (!task.videoUrl || downloading || downloaded) return;
+    if (!task.videoUrl || downloading) return;
     setDownloading(true);
     try {
       await downloadCrossOrigin(
@@ -173,7 +174,6 @@ export default function TaskDetailModal({
       setDownloading(false);
     }
   }, [
-    downloaded,
     downloadKey,
     task.videoUrl,
     task.taskId,
@@ -348,7 +348,7 @@ export default function TaskDetailModal({
                 <Paperclip className="w-3 h-3" />
                 References ({task.references.length})
               </label>
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="task-detail-reference-row flex items-center gap-1.5 flex-wrap">
                 {task.references.map((r) => (
                   <ThumbInline key={r.id} asset={r} tag={tags[r.id]} />
                 ))}
@@ -372,7 +372,7 @@ export default function TaskDetailModal({
                 {task.params.mode === "text"
                   ? "Text"
                   : task.params.mode === "first_last_frame"
-                  ? "First & Last"
+                  ? "Start & End"
                   : "Reference"}
               </dd>
 
@@ -526,8 +526,8 @@ export default function TaskDetailModal({
                     target="_blank"
                     rel="noopener noreferrer"
                     className="task-detail-action-button"
-                    title="Last frame"
-                    aria-label="Last frame"
+                    title="End frame"
+                    aria-label="End frame"
                   >
                     <ImageIcon className="w-4 h-4" />
                   </a>
@@ -536,21 +536,19 @@ export default function TaskDetailModal({
                 {isFinished && (
                   <button
                     onClick={handleDownload}
-                    disabled={downloading || downloaded}
+                    disabled={downloading}
                     className={`task-detail-action-button ${
-                      downloaded ? "task-detail-action-success" : "task-detail-action-primary"
+                      downloaded ? "task-detail-action-downloaded" : "task-detail-action-primary"
                     } disabled:opacity-75`}
                     title={
                       downloaded
-                        ? "이미 다운로드된 작업입니다"
+                        ? "이미 다운로드됨 · 다시 다운로드"
                         : "한 번만 fetch하고 즉시 메모리 해제"
                     }
-                    aria-label={downloaded ? "다운로드됨" : "다운로드"}
+                    aria-label={downloaded ? "다시 다운로드" : "다운로드"}
                   >
                     {downloading ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : downloaded ? (
-                      <Check className="w-4 h-4" />
                     ) : (
                       <Download className="w-4 h-4" />
                     )}

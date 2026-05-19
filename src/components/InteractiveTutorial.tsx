@@ -25,7 +25,7 @@ const STEPS: TutorialStep[] = [
   {
     selector: '[data-tour="composer-mode"]',
     title: "모드 전환",
-    body: "Reference, First/Last, Text 모드는 여기서 전환합니다. Keyframe 작업은 First/Last를 선택하면 됩니다.",
+    body: "Reference, Start/End, Text 모드는 여기서 전환합니다. Keyframe 작업은 Start/End를 선택하면 됩니다.",
   },
   {
     selector: '[data-tour="composer-sound"]',

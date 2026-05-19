@@ -5,6 +5,7 @@ import {
   BellRing,
   FlaskConical,
   KeyRound,
+  Link2,
   LogOut,
   RotateCcw,
   Settings,
@@ -24,8 +25,15 @@ function openOnboarding(stage: "intro" | "setup", tutorial = false) {
 }
 
 export default function Header() {
-  const { apiKey, alibabaApiKey, clearApiKey, demoMode, setDemoMode } =
-    useAppStore();
+  const {
+    apiKey,
+    alibabaApiKey,
+    clearApiKey,
+    demoMode,
+    setDemoMode,
+    usageTrackerUrl,
+    setUsageTrackerUrl,
+  } = useAppStore();
   const activeKey = apiKey || alibabaApiKey;
   const masked = activeKey ? `...${activeKey.slice(-6)}` : "";
   const [open, setOpen] = useState(false);
@@ -98,7 +106,7 @@ export default function Header() {
           <Settings className="w-4 h-4" />
         </button>
         {open && (
-          <div className="app-settings-menu absolute right-0 top-[calc(100%+0.55rem)] w-64 overflow-hidden rounded-2xl border p-2">
+          <div className="app-settings-menu absolute right-0 top-[calc(100%+0.55rem)] w-80 overflow-hidden rounded-2xl border p-2">
             <button
               type="button"
               onClick={() => {
@@ -121,6 +129,19 @@ export default function Header() {
               <RotateCcw className="h-4 w-4" />
               <span>온보딩/튜토리얼 다시보기</span>
             </button>
+            <div className="app-settings-field">
+              <label htmlFor="usageTrackerUrl">
+                <Link2 className="h-4 w-4" />
+                <span>사용량 보고 URL</span>
+              </label>
+              <input
+                id="usageTrackerUrl"
+                type="url"
+                value={usageTrackerUrl}
+                onChange={(event) => setUsageTrackerUrl(event.target.value)}
+                placeholder="https://script.google.com/macros/s/.../exec"
+              />
+            </div>
             <button
               type="button"
               onClick={() => setDemoMode(!demoMode)}

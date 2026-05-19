@@ -38,6 +38,7 @@ import {
   estimateCost,
   estimateTokens,
   formatKrw,
+  getGenerationReferences,
   getModelOption,
   isAlibabaModel,
   minDurationForModel,
@@ -143,8 +144,8 @@ function detectExternalReference(
 type FrameRole = "first_frame" | "last_frame";
 
 const FRAME_SLOT_META: Record<FrameRole, { label: string; shortLabel: string }> = {
-  first_frame: { label: "START", shortLabel: "First" },
-  last_frame: { label: "END", shortLabel: "Last" },
+  first_frame: { label: "START", shortLabel: "Start" },
+  last_frame: { label: "END", shortLabel: "End" },
 };
 
 const MAGNET_GRID = 64;
@@ -1167,12 +1168,14 @@ export default function GenerateView() {
     [currentModel.supports1080p, currentModel.supports480p]
   );
   const canAdjustRatio = currentModel.happyHorseMode !== "i2v";
-  const isTextMode = !isAlibaba && params.mode === "text";
   const activeReferences = useMemo(
-    () => (isTextMode ? [] : references),
-    [isTextMode, references]
+    () => getGenerationReferences(params, references),
+    [params, references]
   );
-  const referenceTags = useMemo(() => getRefTags(references), [references]);
+  const referenceTags = useMemo(
+    () => getRefTags(activeReferences),
+    [activeReferences]
+  );
   const hasVideoRef = activeReferences.some((r) => r.type === "video");
   const cost = estimateCost(params, hasVideoRef);
   const imageRefs = activeReferences.filter((r) => r.type === "image");
@@ -1207,7 +1210,7 @@ export default function GenerateView() {
     : params.mode === "text"
     ? "Text"
     : params.mode === "first_last_frame"
-    ? "First/Last"
+    ? "Start/End"
     : "Reference";
   const composerModelLabel = isAlibaba
     ? "HAPPYHORSE"
@@ -1529,9 +1532,9 @@ export default function GenerateView() {
     : promptRequired && !prompt.trim()
     ? "프롬프트를 입력하세요."
     : lastOnlyError && !isAlibaba
-    ? "First frame 이미지를 첨부하세요. (Last frame만으로는 생성 불가)"
+    ? "Start frame 이미지를 첨부하세요. (End frame만으로는 생성 불가)"
     : noFramesError && !isAlibaba
-    ? "First frame 이미지를 먼저 첨부하세요."
+    ? "Start frame 이미지를 먼저 첨부하세요."
     : uploadPending
     ? "파일 업로드가 끝난 뒤 생성할 수 있습니다."
     : happyHorseI2vError
@@ -1881,7 +1884,7 @@ export default function GenerateView() {
                   setIsAttachmentPasteArmed(false);
                 }}
               >
-                {references.map((ref) => {
+                {activeReferences.map((ref) => {
                   const previewUrl =
                     ref.preview ??
                     (ref.type === "image" && !ref.url.startsWith("asset://")
@@ -2105,7 +2108,7 @@ export default function GenerateView() {
                 }}
               >
                 {(["first_frame", "last_frame"] as const).map((role) => {
-                  const frame = references.find((ref) => ref.role === role);
+                  const frame = activeReferences.find((ref) => ref.role === role);
                   const meta = FRAME_SLOT_META[role];
 
                   return (
@@ -2352,7 +2355,7 @@ export default function GenerateView() {
                           }`}
                           title={
                             canToggleComposerMode
-                              ? "Reference / First-Last Frame 전환"
+                              ? "Reference / Start-End Frame 전환"
                               : composerModeLabel
                           }
                         >
@@ -2480,7 +2483,7 @@ export default function GenerateView() {
                   <div className="ml-2 flex shrink-0 items-center justify-end gap-2">
                     <span className="hidden min-w-0 shrink truncate text-[10px] text-gray-400 xl:inline">
                       {isAlibaba
-                        ? "DashScope usage"
+                        ? "ModelStudio usage"
                         : `~${(estimateTokens(params, hasVideoRef) / 1000).toFixed(0)}K tokens · ${formatKrw(cost)}`}
                     </span>
                     <button

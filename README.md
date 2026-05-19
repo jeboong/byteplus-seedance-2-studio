@@ -60,14 +60,9 @@
 
 ### 토큰 리포팅
 
-- 실제 BytePlus 생성이 `succeeded` 상태가 되고 `usage.total_tokens`가 있을 때만 `/api/usage-report`로 보고합니다.
-- 서버 라우트는 아래 운영 Apps Script URL 한 곳으로만 POST합니다.
-
-```text
-https://script.google.com/macros/s/AKfycbyC53V4K-CHJnP86qIbBP0WmXZ4cDD9D3CFVmd8otL4ZThzpQ7RKhnCeIXgDu4y7CFrnQ/exec
-```
-
-- 테스트 트래커 URL 경로는 제거되어 있습니다.
+- 온보딩 또는 설정 메뉴에서 Google Apps Script `/exec` URL을 입력한 경우에만 `/api/usage-report`로 보고합니다.
+- 리포팅 URL이 비어 있으면 토큰 사용량 보고는 건너뜁니다.
+- 서버 라우트는 클라이언트가 저장한 `https://script.google.com/macros/s/.../exec` URL로만 POST합니다.
 - 데모 모드와 HappyHorse 작업은 토큰 리포팅을 보내지 않습니다.
 - API 키는 리포팅 payload에 포함하지 않습니다. 기본 payload는 `team`, `task_id`, `total_tokens`, `completion_tokens`, `source`, `timestamp`입니다.
 
@@ -190,7 +185,7 @@ src/
 | `POST /api/upload` | BytePlus `POST /files` + file content URL 조회 | Bearer ModelArk API Key |
 | `POST /api/alibaba-upload` | Alibaba ModelStudio 임시 업로드 policy + OSS 업로드 | Bearer ModelStudio API Key |
 | `POST /api/assets` | BytePlus Asset Library control-plane actions | AK/SK HMAC |
-| `POST /api/usage-report` | Google Apps Script usage tracker | 앱 서버에서 고정 URL로 POST |
+| `POST /api/usage-report` | Google Apps Script usage tracker | 온보딩/설정에 저장된 Apps Script URL |
 
 ---
 

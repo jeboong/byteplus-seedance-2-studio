@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import {
+  getGenerationReferences,
   getModelOption,
   isAlibabaModel,
   type ReferenceAsset,
@@ -171,7 +172,7 @@ function AssetCard({
   );
 }
 
-function FirstLastFrameUpload() {
+function StartEndFrameUpload() {
   const { references, addReference, removeReference } = useAppStore();
   const firstRef = useRef<HTMLInputElement>(null);
   const lastRef = useRef<HTMLInputElement>(null);
@@ -225,7 +226,7 @@ function FirstLastFrameUpload() {
           <div className="relative group">
             <img
               src={firstFrame.preview}
-              alt="First frame"
+              alt="Start frame"
               className="w-16 h-16 object-cover rounded-lg"
             />
             <button
@@ -241,7 +242,7 @@ function FirstLastFrameUpload() {
         ) : (
           <Plus className="w-5 h-5 text-gray-400 mb-1" />
         )}
-        <span className="text-[10px] text-gray-400 mt-1">First</span>
+        <span className="text-[10px] text-gray-400 mt-1">Start</span>
       </div>
 
       <button
@@ -260,7 +261,7 @@ function FirstLastFrameUpload() {
           <div className="relative group">
             <img
               src={lastFrame.preview}
-              alt="Last frame"
+              alt="End frame"
               className="w-16 h-16 object-cover rounded-lg"
             />
             <button
@@ -276,7 +277,7 @@ function FirstLastFrameUpload() {
         ) : (
           <Plus className="w-5 h-5 text-gray-400 mb-1" />
         )}
-        <span className="text-[10px] text-gray-400 mt-1">Last</span>
+        <span className="text-[10px] text-gray-400 mt-1">End</span>
       </div>
 
       <input
@@ -822,11 +823,15 @@ function ReferenceMode() {
   const [dragOverRefId, setDragOverRefId] = useState<string | null>(null);
   const { upload, error: uploadError, clearError } = useFileUpload();
 
-  const tags = useMemo(() => getRefTags(references), [references]);
   const currentModel = getModelOption(params.modelId);
   const isAlibaba = isAlibabaModel(params.modelId);
   const happyHorseMode = currentModel.happyHorseMode;
   const allowAttachments = !isAlibaba || happyHorseMode !== "t2v";
+  const visibleReferences = useMemo(
+    () => getGenerationReferences(params, references),
+    [params, references]
+  );
+  const tags = useMemo(() => getRefTags(visibleReferences), [visibleReferences]);
 
   const openUrlDialog = useCallback(() => {
     setUrlInput("");
@@ -937,7 +942,7 @@ function ReferenceMode() {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 flex-wrap">
-        {references.map((ref) => (
+        {visibleReferences.map((ref) => (
           <AssetCard
             key={ref.id}
             asset={ref}
@@ -956,9 +961,9 @@ function ReferenceMode() {
             disabled={
               isAlibaba
                 ? happyHorseMode === "i2v"
-                  ? references.filter((r) => r.type === "image").length >= 1
-                  : references.filter((r) => r.type === "image").length >= 9
-                : references.length >= 12
+                  ? visibleReferences.filter((r) => r.type === "image").length >= 1
+                  : visibleReferences.filter((r) => r.type === "image").length >= 9
+                : visibleReferences.length >= 12
             }
             className="glass-control w-16 h-16 border border-dashed border-white/60 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 hover:bg-primary-50/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
             title={
@@ -1121,6 +1126,10 @@ export default function ReferenceUpload() {
   const [helpOpen, setHelpOpen] = useState(false);
   const currentModel = getModelOption(params.modelId);
   const isAlibaba = isAlibabaModel(params.modelId);
+  const visibleReferences = useMemo(
+    () => getGenerationReferences(params, references),
+    [params, references]
+  );
   const maxRefs = isAlibaba
     ? currentModel.happyHorseMode === "i2v"
       ? 1
@@ -1138,11 +1147,11 @@ export default function ReferenceUpload() {
             : params.mode === "text"
             ? "Text-to-video"
             : params.mode === "first_last_frame"
-            ? "First & Last Frame"
+            ? "Start & End Frame"
             : "이미지 / 비디오 / 오디오"}
         </span>
         {params.mode === "reference" && maxRefs > 0 && (
-          <span>({references.length}/{maxRefs})</span>
+          <span>({visibleReferences.length}/{maxRefs})</span>
         )}
         {isAlibaba && (
           <button
@@ -1171,7 +1180,7 @@ export default function ReferenceUpload() {
           Text mode는 첨부 없이 프롬프트만 사용합니다.
         </div>
       ) : params.mode === "first_last_frame" ? (
-        <FirstLastFrameUpload />
+        <StartEndFrameUpload />
       ) : (
         <ReferenceMode />
       )}

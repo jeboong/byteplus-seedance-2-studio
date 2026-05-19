@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAppStore } from "@/lib/store";
+import {
+  DEFAULT_GRID_COLUMNS,
+  GRID_COLUMNS_KEY,
+  RESULT_VIEW_MODE_KEY,
+  USAGE_TRACKER_URL_KEY,
+  normalizeGridColumns,
+  normalizeResultViewMode,
+  useAppStore,
+} from "@/lib/store";
 import Onboarding from "@/components/Onboarding";
 import GenerateView from "@/components/GenerateView";
 
@@ -12,6 +20,9 @@ export default function Home() {
     setApiKey,
     setAlibabaApiKey,
     setDemoMode,
+    setGridColumns,
+    setResultViewMode,
+    setUsageTrackerUrl,
   } = useAppStore();
   const [loaded, setLoaded] = useState(false);
   const [browseMode, setBrowseMode] = useState(false);
@@ -33,8 +44,25 @@ export default function Home() {
     }
     setBrowseMode(localStorage.getItem("sd2_browse_mode") === "1");
     setDemoMode(localStorage.getItem("sd2_demo_mode") === "1");
+    setUsageTrackerUrl(localStorage.getItem(USAGE_TRACKER_URL_KEY) ?? "");
+    setResultViewMode(
+      normalizeResultViewMode(localStorage.getItem(RESULT_VIEW_MODE_KEY))
+    );
+    const storedGridColumns = localStorage.getItem(GRID_COLUMNS_KEY);
+    setGridColumns(
+      storedGridColumns === null
+        ? DEFAULT_GRID_COLUMNS
+        : normalizeGridColumns(Number(storedGridColumns))
+    );
     setLoaded(true);
-  }, [setApiKey, setAlibabaApiKey, setDemoMode]);
+  }, [
+    setApiKey,
+    setAlibabaApiKey,
+    setDemoMode,
+    setGridColumns,
+    setResultViewMode,
+    setUsageTrackerUrl,
+  ]);
 
   useEffect(() => {
     const handleOpenOnboarding = (event: Event) => {

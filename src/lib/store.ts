@@ -11,6 +11,12 @@ const TASKS_KEY = "sd2_tasks";
 const DRAFT_KEY = "sd2_composer_draft";
 const REF_DATA_PREFIX = "sd2_ref_data";
 const PERSIST_DEBOUNCE_MS = 800;
+export const RESULT_VIEW_MODE_KEY = "sd2_result_view_mode";
+export const GRID_COLUMNS_KEY = "sd2_grid_columns";
+export const USAGE_TRACKER_URL_KEY = "sd2_usage_tracker_url";
+export const DEFAULT_GRID_COLUMNS = 5;
+export const MIN_GRID_COLUMNS = 2;
+export const MAX_GRID_COLUMNS = 7;
 const DEMO_VIDEO_URL =
   "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
 const TERMINAL_TASK_STATUSES = new Set([
@@ -28,6 +34,17 @@ interface ComposerDraft {
   references: ReferenceAsset[];
   params: ModelParams;
   updatedAt: number;
+}
+
+export type ResultViewMode = "free" | "grid";
+
+export function normalizeResultViewMode(value: string | null): ResultViewMode {
+  return value === "grid" ? "grid" : "free";
+}
+
+export function normalizeGridColumns(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_GRID_COLUMNS;
+  return Math.min(MAX_GRID_COLUMNS, Math.max(MIN_GRID_COLUMNS, Math.round(value)));
 }
 
 function isDataUri(value?: string): value is string {
@@ -171,6 +188,12 @@ interface AppState {
   clearApiKey: () => void;
   demoMode: boolean;
   setDemoMode: (enabled: boolean) => void;
+  usageTrackerUrl: string;
+  setUsageTrackerUrl: (url: string) => void;
+  resultViewMode: ResultViewMode;
+  setResultViewMode: (mode: ResultViewMode) => void;
+  gridColumns: number;
+  setGridColumns: (columns: number) => void;
 
   params: ModelParams;
   setParams: (params: Partial<ModelParams>) => void;
@@ -235,6 +258,33 @@ export const useAppStore = create<AppState>((set) => ({
       }
       return { demoMode: enabled, tasks: nextTasks };
     });
+  },
+  usageTrackerUrl: "",
+  setUsageTrackerUrl: (url) => {
+    const next = url.trim();
+    if (typeof window !== "undefined") {
+      if (next) {
+        localStorage.setItem(USAGE_TRACKER_URL_KEY, next);
+      } else {
+        localStorage.removeItem(USAGE_TRACKER_URL_KEY);
+      }
+    }
+    set({ usageTrackerUrl: next });
+  },
+  resultViewMode: "free",
+  setResultViewMode: (mode) => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(RESULT_VIEW_MODE_KEY, mode);
+    }
+    set({ resultViewMode: mode });
+  },
+  gridColumns: DEFAULT_GRID_COLUMNS,
+  setGridColumns: (columns) => {
+    const next = normalizeGridColumns(columns);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(GRID_COLUMNS_KEY, String(next));
+    }
+    set({ gridColumns: next });
   },
 
   params: DEFAULT_PARAMS,

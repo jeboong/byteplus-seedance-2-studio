@@ -360,7 +360,7 @@ export default function ModelParams({
                       </div>
                       <div className="mt-1 flex gap-3 text-[10px] text-gray-400">
                         {m.provider === "alibaba" ? (
-                          <span>DashScope async · 720P/1080P · 3-15s</span>
+                          <span>ModelStudio async · 720P/1080P · 3-15s</span>
                         ) : (
                           <>
                             <span>
@@ -441,7 +441,7 @@ export default function ModelParams({
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
-              First/Last Frame
+              Start/End Frame
             </button>
           </div>
         </section>
@@ -680,7 +680,7 @@ export default function ModelParams({
           {!isAlibaba && (
           <div className="flex items-center justify-between">
             <div>
-              <span className="text-sm text-gray-700">Return Last Frame</span>
+              <span className="text-sm text-gray-700">Return End Frame</span>
               <p className="text-[11px] text-gray-400 mt-0.5">
                 Returns the last frame as PNG for chaining consecutive videos.
               </p>

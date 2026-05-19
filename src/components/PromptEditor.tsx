@@ -17,6 +17,7 @@ import { createPortal } from "react-dom";
 import { Image as ImageIcon, Film, Music, UserCheck } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { getRefTags } from "@/lib/refTags";
+import { getGenerationReferences } from "@/lib/types";
 
 const DROPDOWN_WIDTH = 230;
 const DROPDOWN_MAX_HEIGHT = 224;
@@ -207,10 +208,18 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
 ) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const references = useAppStore((s) => s.references);
-  const tagsById = useMemo(() => getRefTags(references), [references]);
+  const params = useAppStore((s) => s.params);
+  const activeReferences = useMemo(
+    () => getGenerationReferences(params, references),
+    [params, references]
+  );
+  const tagsById = useMemo(
+    () => getRefTags(activeReferences),
+    [activeReferences]
+  );
   const tagItems = useMemo<TagItem[]>(
     () =>
-      references.map((r) => ({
+      activeReferences.map((r) => ({
         id: r.id,
         type: r.type,
         name: r.name,
@@ -218,7 +227,7 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
         preview: r.preview,
         tag: tagsById[r.id],
       })),
-    [references, tagsById]
+    [activeReferences, tagsById]
   );
 
   const [acOpen, setAcOpen] = useState(false);

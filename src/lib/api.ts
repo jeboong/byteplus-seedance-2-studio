@@ -1,13 +1,15 @@
 import {
   getModelOption,
+  getGenerationReferences,
   isAlibabaModel,
   type ModelId,
   type ModelParams,
   type ReferenceAsset,
 } from "./types";
 import { expandPromptTags, getRefTags } from "./refTags";
+import { USAGE_TRACKER_URL_KEY } from "./store";
 
-function isDashScopeMediaUrl(url: string): boolean {
+function isModelStudioMediaUrl(url: string): boolean {
   return /^(https?:\/\/|oss:\/\/)/i.test(url);
 }
 
@@ -67,6 +69,12 @@ function hasUsageTaskReported(taskId: string): boolean {
   return getReportedUsageTasks().has(taskId);
 }
 
+function getUsageTrackerUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  const value = window.localStorage.getItem(USAGE_TRACKER_URL_KEY)?.trim();
+  return value || null;
+}
+
 function expandHappyHorseReferenceTags(
   prompt: string,
   references: ReferenceAsset[]
@@ -114,7 +122,7 @@ function buildHappyHorsePayload(
     const firstFrame =
       references.find((r) => r.role === "first_frame" && r.type === "image") ??
       references.find((r) => r.type === "image");
-    if (!firstFrame || !isDashScopeMediaUrl(firstFrame.url)) {
+    if (!firstFrame || !isModelStudioMediaUrl(firstFrame.url)) {
       throw new Error("HappyHorse I2V는 공개 HTTP(S) 또는 임시 OSS 첫 프레임 이미지 URL 1개가 필요합니다.");
     }
     input.media = [{ type: "first_frame", url: firstFrame.url }];
@@ -123,7 +131,7 @@ function buildHappyHorsePayload(
     if (refs.length < 1 || refs.length > 9) {
       throw new Error("HappyHorse R2V는 공개 HTTP(S) 레퍼런스 이미지 URL 1~9개가 필요합니다.");
     }
-    const invalid = refs.find((r) => !isDashScopeMediaUrl(r.url));
+    const invalid = refs.find((r) => !isModelStudioMediaUrl(r.url));
     if (invalid) {
       throw new Error(`HappyHorse R2V는 공개 HTTP(S) 또는 임시 OSS 이미지만 보낼 수 있습니다: ${invalid.name}`);
     }
@@ -156,9 +164,9 @@ export function buildPayload(
   // BytePlus recommends "[Image 1]xxx, [Image 2]xxx" natural-language refs.
   // We let users author with friendly @img1 / @vid1 / @aud1 tags in the UI
   // and expand them here just before sending the request.
-  const activeReferences = params.mode === "text" ? [] : references;
+  const activeReferences = getGenerationReferences(params, references);
   const expandedPrompt =
-    params.mode === "text" ? prompt : expandPromptTags(prompt);
+    params.mode === "text" ? prompt : expandPromptTags(prompt, activeReferences);
 
   const content: Record<string, unknown>[] = [
     { type: "text", text: expandedPrompt },
@@ -281,7 +289,9 @@ export async function reportUsageOnce(
   }
 ) {
   const totalTokens = usage?.total_tokens;
+  const trackerUrl = getUsageTrackerUrl();
   if (
+    !trackerUrl ||
     !taskId ||
     typeof totalTokens !== "number" ||
     !Number.isFinite(totalTokens) ||
@@ -299,6 +309,7 @@ export async function reportUsageOnce(
         task_id: taskId,
         total_tokens: totalTokens,
         completion_tokens: usage?.completion_tokens,
+        tracker_url: trackerUrl,
         timestamp: Date.now(),
       }),
     });

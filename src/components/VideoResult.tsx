@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type CSSProperties,
   useState,
   useCallback,
   useRef,
@@ -44,10 +45,9 @@ import {
 } from "@/lib/downloadState";
 import { getModelOption, isAlibabaModel } from "@/lib/types";
 import type { GenerationTask, ReferenceAsset } from "@/lib/types";
+import type { ResultViewMode } from "@/lib/store";
 import GenerationFX from "./GenerationFX";
 import TaskDetailModal from "./TaskDetailModal";
-
-type ViewMode = "free" | "grid";
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -104,9 +104,9 @@ function ReferenceThumb({
   const isImage = asset.type === "image";
   const roleLabel =
     asset.role === "first_frame"
-      ? "F"
+      ? "S"
       : asset.role === "last_frame"
-      ? "L"
+      ? "E"
       : "";
   const tagNumber = tag?.match(/\d+/)?.[0];
 
@@ -274,12 +274,14 @@ function HoverVideo({
   ratio,
   fill,
   controls = false,
+  fit = "cover",
 }: {
   src: string;
   compact?: boolean;
   ratio?: string;
   fill?: boolean;
   controls?: boolean;
+  fit?: "cover" | "contain";
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -333,7 +335,9 @@ function HoverVideo({
           loop={!controls}
           playsInline
           preload={controls ? "auto" : "metadata"}
-          className="absolute inset-0 w-full h-full object-cover"
+          className={`absolute inset-0 w-full h-full ${
+            fit === "contain" ? "object-contain" : "object-cover"
+          }`}
           onMouseEnter={controls ? undefined : play}
           onMouseLeave={controls ? undefined : pause}
           onFocus={controls ? undefined : play}
@@ -402,7 +406,7 @@ function InlineTaskDetails({
     task.params.mode === "text"
       ? "Text"
       : task.params.mode === "first_last_frame"
-      ? "First/Last"
+      ? "Start/End"
       : "Reference";
   const copyPrompt = useCallback(async () => {
     const text = task.prompt || "";
@@ -558,7 +562,7 @@ function TaskCard({
     async (e: React.MouseEvent<HTMLButtonElement>) => {
       e.preventDefault();
       e.stopPropagation();
-      if (!task.videoUrl || downloading || downloaded) return;
+      if (!task.videoUrl || downloading) return;
       setDownloading(true);
       const fname = `seedance-${task.taskId || task.id}.mp4`;
       try {
@@ -569,7 +573,7 @@ function TaskCard({
         setDownloading(false);
       }
     },
-    [downloadKey, downloaded, task.videoUrl, task.taskId, task.id, downloading]
+    [downloadKey, task.videoUrl, task.taskId, task.id, downloading]
   );
 
   const handleReuse = useCallback(() => {
@@ -645,6 +649,7 @@ function TaskCard({
   const taskModel = getModelOption(task.params.modelId);
   const canExpandMedia = Boolean(isFinished);
   const [now, setNow] = useState(() => Date.now());
+  const showInlineDetails = expanded && !compact;
 
   useEffect(() => {
     if (!isGenerating) return;
@@ -872,19 +877,25 @@ function TaskCard({
       )}
       {isFinished && task.videoUrl ? (
         <div
-          ref={mediaRef}
-          className="task-card-media bg-black overflow-hidden flex-shrink-0 relative group cursor-pointer"
+          className={showInlineDetails ? "task-expanded-layout" : "task-media-shell"}
           data-no-task-drag
-          onClick={openDetailFromMedia}
-          title={compact ? "상세보기" : expanded ? undefined : "상세보기"}
         >
-          <HoverVideo
-            src={task.videoUrl}
-            compact={compact}
-            fill
-            controls={expanded && !compact}
-            ratio={task.actualRatio || task.params.ratio}
-          />
+          <div
+            ref={mediaRef}
+            className="task-card-media bg-black overflow-hidden flex-shrink-0 relative group cursor-pointer"
+            onClick={openDetailFromMedia}
+            title={compact ? "상세보기" : showInlineDetails ? undefined : "상세보기"}
+          >
+            <HoverVideo
+              src={task.videoUrl}
+              compact={compact}
+              fill
+              controls={showInlineDetails}
+              fit={showInlineDetails ? "contain" : "cover"}
+              ratio={task.actualRatio || task.params.ratio}
+            />
+          </div>
+          {showInlineDetails && <InlineTaskDetails task={task} />}
         </div>
       ) : isGenerating ? (
         <div className="task-card-media task-card-media-generating overflow-hidden flex-shrink-0 relative">
@@ -1068,8 +1079,8 @@ function TaskCard({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="task-icon-button"
-                title="Last frame"
-                aria-label="Last frame"
+                title="End frame"
+                aria-label="End frame"
               >
                 <ImageIcon className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
               </a>
@@ -1077,23 +1088,21 @@ function TaskCard({
             {isFinished && (
               <button
                 onClick={handleDownload}
-                disabled={downloading || downloaded}
+                disabled={downloading}
                 className={`task-icon-button ${
-                  downloaded ? "task-icon-button-success" : "task-icon-button-primary"
+                  downloaded ? "task-icon-button-downloaded" : "task-icon-button-primary"
                 } disabled:opacity-75`}
                 title={
                   downloaded
-                    ? "이미 다운로드된 작업입니다"
+                    ? "이미 다운로드됨 · 다시 다운로드"
                     : "비디오 다운로드 (한 번만 fetch, 즉시 메모리 해제)"
                 }
-                aria-label={downloaded ? "다운로드됨" : "다운로드"}
+                aria-label={downloaded ? "다시 다운로드" : "다운로드"}
               >
                 {downloading ? (
                   <Loader2
                     className={`${compact ? "w-2.5 h-2.5" : "w-3 h-3"} animate-spin`}
                   />
-                ) : downloaded ? (
-                  <Check className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
                 ) : (
                   <Download className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} />
                 )}
@@ -1102,7 +1111,7 @@ function TaskCard({
           </div>
         </div>
       </div>
-      {expanded && !compact && (
+      {expanded && !compact && !isFinished && (
         <InlineTaskDetails task={task} />
       )}
       {previewAsset && (
@@ -1120,8 +1129,8 @@ function ViewToggle({
   mode,
   onChange,
 }: {
-  mode: ViewMode;
-  onChange: (m: ViewMode) => void;
+  mode: ResultViewMode;
+  onChange: (m: ResultViewMode) => void;
 }) {
   return (
     <div
@@ -1155,8 +1164,14 @@ function ViewToggle({
 }
 
 export default function VideoResult() {
-  const { tasks, clearTasks } = useAppStore();
-  const [viewMode, setViewMode] = useState<ViewMode>("free");
+  const {
+    tasks,
+    clearTasks,
+    resultViewMode: viewMode,
+    setResultViewMode: setViewMode,
+    gridColumns,
+    setGridColumns,
+  } = useAppStore();
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
   const [taskActionsOpen, setTaskActionsOpen] = useState(false);
   const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
@@ -1229,6 +1244,10 @@ export default function VideoResult() {
     setSelectionMode(false);
   }, [clearTasks, deleteAllConfirm]);
 
+  const gridStyle = {
+    "--task-grid-columns": gridColumns,
+  } as CSSProperties;
+
   return (
     <div>
       <div className="results-toolbar flex items-center gap-2">
@@ -1294,6 +1313,21 @@ export default function VideoResult() {
           )}
         </div>
         <ViewToggle mode={viewMode} onChange={setViewMode} />
+        {viewMode === "grid" && (
+          <label className="grid-density-control glass-chip" title="그리드 열 수">
+            <LayoutGrid className="h-3.5 w-3.5" />
+            <input
+              type="range"
+              min={2}
+              max={7}
+              step={1}
+              value={gridColumns}
+              onChange={(event) => setGridColumns(Number(event.target.value))}
+              aria-label="그리드 열 수"
+            />
+            <span>{gridColumns}</span>
+          </label>
+        )}
       </div>
       <div className="results-task-count glass-chip">
         {tasks.length} tasks
@@ -1313,7 +1347,7 @@ export default function VideoResult() {
         </div>
       ) : viewMode === "free" ? (
         <div
-          className="task-list-board free-board relative mx-auto flex w-full max-w-5xl flex-col gap-8"
+          className="task-list-board free-board relative mx-auto flex w-full max-w-none flex-col gap-8"
         >
           {tasks.map((task) => (
             <TaskCard
@@ -1335,7 +1369,7 @@ export default function VideoResult() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+        <div className="task-grid" style={gridStyle}>
           {tasks.map((task) => (
             <TaskCard
               key={task.id}
