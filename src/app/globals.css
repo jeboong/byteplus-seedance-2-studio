@@ -1151,6 +1151,16 @@ html.dark .generation-fx-copy span + span {
   min-height: 42px;
   transition: min-height 340ms cubic-bezier(0.2, 0.8, 0.2, 1),
     padding 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* A visible scrollbar shrinks the textarea's wrap width, desyncing it from
+     the tag-highlight layer behind it (badges drift on wrapped lines). Hide
+     it so both layers always wrap at the same width. */
+  scrollbar-width: none;
+}
+
+.prompt-editor-textarea::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .prompt-editor-collapsed .prompt-editor-textarea {
@@ -6662,9 +6672,19 @@ html:not(.dark) .reference-attached-icon {
   color: transparent;
   font: inherit;
   line-height: inherit;
-  letter-spacing: inherit;
+  /* Must match .prompt-editor-textarea exactly or badges drift horizontally. */
+  letter-spacing: 0;
   white-space: pre-wrap;
   overflow-wrap: break-word;
+  /* Keep in lockstep with the textarea's padding transition. */
+  transition: padding 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* The textarea's vertical padding changes per composer state; the highlight
+   layer must mirror it 1:1 or tag badges sit offset from the visible text. */
+.prompt-editor-collapsed .prompt-tag-highlight-text {
+  padding-top: 0.42rem;
+  padding-bottom: 0.42rem;
 }
 
 .prompt-editor-textarea {

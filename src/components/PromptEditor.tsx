@@ -160,6 +160,13 @@ function getCaretCoordinates(
     mirror.style.setProperty(cssProp, style.getPropertyValue(cssProp));
   }
 
+  // The computed width includes the scrollbar gutter, but the textarea's text
+  // wraps inside clientWidth (which excludes it). Use clientWidth + borders so
+  // the mirror wraps exactly like the real textarea when a scrollbar shows.
+  const borderLeft = parseFloat(style.borderLeftWidth) || 0;
+  const borderRight = parseFloat(style.borderRightWidth) || 0;
+  mirror.style.width = `${textarea.clientWidth + borderLeft + borderRight}px`;
+
   mirror.textContent = textarea.value.slice(0, position);
   const marker = document.createElement("span");
   marker.textContent = textarea.value.slice(position, position + 1) || ".";
@@ -408,19 +415,42 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
     [onChange, value]
   );
 
+  const syncScrollOffset = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    setScrollOffset((prev) => {
+      const next = { left: textarea.scrollLeft, top: textarea.scrollTop };
+      return prev.left === next.left && prev.top === next.top ? prev : next;
+    });
+  }, []);
+
+  // Typing can auto-scroll the textarea before React repaints the highlight
+  // layer; re-sync after every value change so tag badges never drift.
+  useEffect(() => {
+    const raf = requestAnimationFrame(syncScrollOffset);
+    return () => cancelAnimationFrame(raf);
+  }, [syncScrollOffset, value]);
+
   const handleChange = useCallback(
     (e: ChangeEvent<HTMLTextAreaElement>) => {
       const textarea = e.currentTarget;
       onChange(e.target.value);
+      syncScrollOffset();
       syncAutocomplete(textarea);
-      requestAnimationFrame(() => syncAutocomplete(textarea));
+      requestAnimationFrame(() => {
+        syncScrollOffset();
+        syncAutocomplete(textarea);
+      });
     },
-    [onChange, syncAutocomplete]
+    [onChange, syncAutocomplete, syncScrollOffset]
   );
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       const textarea = e.currentTarget;
+      // Never intercept keys while an IME composition (Korean, Japanese, ...)
+      // is in progress — Enter/Tab/arrows there commit the composition.
+      if (e.nativeEvent.isComposing) return;
       if (e.key === "@" && !acOpen) {
         requestAnimationFrame(() => syncAutocomplete(textarea));
         window.setTimeout(() => syncAutocomplete(textarea), 0);
@@ -474,7 +504,6 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
       acIndex,
       acOpen,
       filtered,
-      queueAutocompletePlacement,
       syncAutocomplete,
       tagItems,
     ]
@@ -518,12 +547,7 @@ const PromptEditor = forwardRef<PromptEditorHandle, Props>(function PromptEditor
         onKeyDown={handleKeyDown}
         onKeyUp={refreshAutocomplete}
         onClick={refreshAutocomplete}
-        onScroll={(event) =>
-          setScrollOffset({
-            left: event.currentTarget.scrollLeft,
-            top: event.currentTarget.scrollTop,
-          })
-        }
+        onScroll={syncScrollOffset}
         onFocus={() => {
           onFocus?.();
           queueAutocompletePlacement();
