@@ -373,6 +373,10 @@ export default function TaskDetailModal({
                   ? "Text"
                   : task.params.mode === "first_last_frame"
                   ? "Start & End"
+                  : task.params.mode === "video_edit"
+                  ? "Video Edit"
+                  : task.params.mode === "video_extend"
+                  ? "Video Extend"
                   : "Reference"}
               </dd>
 

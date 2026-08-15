@@ -1,4 +1,11 @@
-export type GenerationMode = "text" | "reference" | "first_last_frame";
+export type GenerationMode =
+  | "text"
+  | "reference"
+  | "video_edit"
+  | "video_extend"
+  | "first_last_frame";
+
+export type VideoFormat = "mp4" | "mov";
 
 export type AspectRatio =
   | "adaptive"
@@ -14,11 +21,18 @@ export type Resolution = "480p" | "720p" | "1080p";
 export type DurationType = "seconds" | "smart";
 
 export type ModelId =
+  | "dreamina-seedance-2-5-260628"
   | "dreamina-seedance-2-0-260128"
   | "dreamina-seedance-2-0-fast-260128"
   | "happyhorse-1.0-t2v"
   | "happyhorse-1.0-i2v"
   | "happyhorse-1.0-r2v";
+
+export interface ReferenceLimits {
+  images: number;
+  videos: number;
+  audios: number;
+}
 
 export type ModelProvider = "byteplus" | "alibaba";
 export type AlibabaHappyHorseMode = "t2v" | "i2v" | "r2v";
@@ -31,6 +45,14 @@ export interface ModelOption {
   versionLabel: string;
   supports1080p?: boolean;
   supports480p?: boolean;
+  /** Maximum output duration in seconds (BytePlus). */
+  maxDuration?: number;
+  /** Supports the `output_format: "mov"` request parameter (Seedance 2.5+). */
+  supportsMov?: boolean;
+  /** Supports generating from audio references alone, without image/video. */
+  supportsAudioOnlyReference?: boolean;
+  /** Per-type reference asset caps for a single request (BytePlus). */
+  referenceLimits?: ReferenceLimits;
   happyHorseMode?: AlibabaHappyHorseMode;
   pricing: {
     standard: {
@@ -46,12 +68,30 @@ export interface ModelOption {
 
 export const MODELS: ModelOption[] = [
   {
+    id: "dreamina-seedance-2-5-260628",
+    name: "Seedance 2.5",
+    provider: "byteplus",
+    versionLabel: "260628",
+    // Per the official docs, Seedance 2.5 outputs 480p/720p only (no 1080p/4K).
+    supports1080p: false,
+    supports480p: true,
+    maxDuration: 30,
+    supportsMov: true,
+    supportsAudioOnlyReference: true,
+    referenceLimits: { images: 30, videos: 10, audios: 10 },
+    pricing: {
+      standard: { includeVideoInput: 6.4, excludeVideoInput: 10.7 },
+    },
+  },
+  {
     id: "dreamina-seedance-2-0-260128",
     name: "Seedance 2.0",
     provider: "byteplus",
     versionLabel: "260128",
     supports1080p: true,
     supports480p: true,
+    maxDuration: 15,
+    referenceLimits: { images: 9, videos: 3, audios: 3 },
     pricing: {
       standard: { includeVideoInput: 4.3, excludeVideoInput: 7.0 },
       p1080: { includeVideoInput: 4.7, excludeVideoInput: 7.7 },
@@ -64,6 +104,8 @@ export const MODELS: ModelOption[] = [
     versionLabel: "260128",
     supports1080p: false,
     supports480p: true,
+    maxDuration: 15,
+    referenceLimits: { images: 9, videos: 3, audios: 3 },
     pricing: {
       standard: { includeVideoInput: 3.3, excludeVideoInput: 5.6 },
     },
@@ -122,6 +164,7 @@ export interface ModelParams {
   seed: string;
   internetSearch: boolean;
   generationTimeout: number;
+  videoFormat: VideoFormat;
 }
 
 export interface ReferenceAsset {
@@ -179,7 +222,7 @@ export interface GenerationTask {
 }
 
 export const DEFAULT_PARAMS: ModelParams = {
-  modelId: "dreamina-seedance-2-0-260128",
+  modelId: "dreamina-seedance-2-5-260628",
   mode: "reference",
   ratio: "16:9",
   resolution: "720p",
@@ -194,6 +237,7 @@ export const DEFAULT_PARAMS: ModelParams = {
   seed: "",
   internetSearch: false,
   generationTimeout: 48,
+  videoFormat: "mp4",
 };
 
 export const ASPECT_RATIOS: { label: string; value: AspectRatio }[] = [
@@ -232,8 +276,17 @@ export function isHappyHorseModel(modelId: ModelId): boolean {
   return isAlibabaModel(modelId);
 }
 
+export function isSeedance25Model(modelId: ModelId): boolean {
+  return modelId === "dreamina-seedance-2-5-260628";
+}
+
 export function isFrameReference(ref: ReferenceAsset): boolean {
   return ref.role === "first_frame" || ref.role === "last_frame";
+}
+
+/** Modes that attach reference_* assets (image/video/audio) to the request. */
+export function isReferenceStyleMode(mode: GenerationMode): boolean {
+  return mode === "reference" || mode === "video_edit" || mode === "video_extend";
 }
 
 export function getGenerationReferences(
@@ -255,6 +308,41 @@ export function supportsAspectRatio(modelId: ModelId, ratio: AspectRatio): boole
   return true;
 }
 
+/**
+ * Seedance 2.5 task-type constraint: for video editing, video extension, and
+ * first-frame / first-last-frame generation, `ratio` only supports "adaptive"
+ * (output keeps the source asset's aspect ratio). Violations return an
+ * asynchronous InvalidParameter.TaskTypeConstraint error.
+ */
+export function isRatioLockedToAdaptive(params: ModelParams): boolean {
+  return (
+    isSeedance25Model(params.modelId) &&
+    (params.mode === "video_edit" ||
+      params.mode === "video_extend" ||
+      params.mode === "first_last_frame")
+  );
+}
+
+/**
+ * Seedance 2.5 task-type constraint: video editing only supports
+ * `duration: -1` (output keeps the source video's duration).
+ */
+export function isDurationLockedToSmart(params: ModelParams): boolean {
+  return isSeedance25Model(params.modelId) && params.mode === "video_edit";
+}
+
+export function supportsMovFormat(modelId: ModelId): boolean {
+  return getModelOption(modelId).supportsMov === true;
+}
+
+export function supportsAudioOnlyReference(modelId: ModelId): boolean {
+  return getModelOption(modelId).supportsAudioOnlyReference === true;
+}
+
+export function referenceLimitsForModel(modelId: ModelId): ReferenceLimits | null {
+  return getModelOption(modelId).referenceLimits ?? null;
+}
+
 export function supportsSmartDuration(modelId: ModelId): boolean {
   return isBytePlusModel(modelId);
 }
@@ -263,8 +351,8 @@ export function minDurationForModel(modelId: ModelId): number {
   return isAlibabaModel(modelId) ? 3 : 4;
 }
 
-export function maxDurationForModel(_modelId: ModelId): number {
-  return 15;
+export function maxDurationForModel(modelId: ModelId): number {
+  return getModelOption(modelId).maxDuration ?? 15;
 }
 
 const FRAME_RATE = 24;
@@ -370,14 +458,28 @@ function getOutputTokenEstimate(params: ModelParams): number {
   return Math.round((dim.width * dim.height * FRAME_RATE * dur) / 1024);
 }
 
+function minTokensForVideoInput(
+  resolution: Resolution,
+  dur: number
+): number | undefined {
+  const table = VIDEO_INPUT_MIN_TOKENS[resolution];
+  const exact = table[dur];
+  if (exact !== undefined) return exact;
+  // Seedance 2.5 supports up to 30s; extrapolate linearly from the 15s rate.
+  if (dur > 15 && table[15]) {
+    return Math.round((table[15] / 15) * dur);
+  }
+  return undefined;
+}
+
 export function estimateTokens(
   params: ModelParams,
   hasVideoRef = false
 ): number {
-  const dur = params.durationType === "seconds" ? params.duration : 10;
+  const dur = getDurationSeconds(params);
   const outputTokens = getOutputTokenEstimate(params);
   const minForVideoInput =
-    VIDEO_INPUT_MIN_TOKENS[params.resolution][dur] ?? outputTokens;
+    minTokensForVideoInput(params.resolution, dur) ?? outputTokens;
   const tokensPerVideo = hasVideoRef
     ? Math.max(outputTokens, minForVideoInput)
     : outputTokens;

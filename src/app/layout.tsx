@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Seedance 2.0 Studio",
-  description: "AI Video Generation powered by BytePlus ModelArk Seedance 2.0",
+  title: "Seedance Studio",
+  description:
+    "AI Video Generation powered by BytePlus ModelArk Seedance 2.5 / 2.0",
 };
 
 export default function RootLayout({

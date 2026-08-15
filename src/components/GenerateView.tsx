@@ -41,10 +41,17 @@ import {
   getGenerationReferences,
   getModelOption,
   isAlibabaModel,
+  isDurationLockedToSmart,
+  isRatioLockedToAdaptive,
+  isReferenceStyleMode,
+  maxDurationForModel,
   minDurationForModel,
+  referenceLimitsForModel,
   supportsAspectRatio,
+  supportsAudioOnlyReference,
   supportsSmartDuration,
   type AspectRatio,
+  type GenerationMode,
   type ModelParams as ModelParamsType,
   type Resolution,
 } from "@/lib/types";
@@ -154,8 +161,31 @@ const COMPOSER_INTERACTIVE_SELECTOR =
 const BYTEPLUS_MODE_CYCLE: ModelParamsType["mode"][] = [
   "text",
   "reference",
+  "video_edit",
+  "video_extend",
   "first_last_frame",
 ];
+
+const BYTEPLUS_MODE_LABELS: Record<
+  GenerationMode,
+  { full: string; chip: string }
+> = {
+  text: { full: "Text", chip: "Text" },
+  reference: { full: "Reference", chip: "Reference" },
+  video_edit: { full: "Video Edit", chip: "Edit" },
+  video_extend: { full: "Video Extend", chip: "Extend" },
+  first_last_frame: { full: "Keyframe", chip: "Start/End" },
+};
+
+const BYTEPLUS_MODE_PLACEHOLDERS: Record<GenerationMode, string> = {
+  text: "Describe the video you want to create...",
+  reference: "Describe your scene with visual references...",
+  video_edit:
+    "Describe the edit, e.g. replace / add / remove objects in @vid1...",
+  video_extend:
+    "Describe how to extend or continue the story of @vid1...",
+  first_last_frame: "Describe camera or action in the scene...",
+};
 type QuickPanel = "ratio" | "resolution" | "duration";
 type QuickPanelPlacement = { left: number; width: number };
 
@@ -1190,7 +1220,9 @@ export default function GenerateView() {
   const happyHorseMode = currentModel.happyHorseMode;
   const uploadPending = activeReferences.some((r) => r.uploading);
   const isFirstLastMode = params.mode === "first_last_frame";
-  const isReferenceMode = params.mode === "reference";
+  const isReferenceMode = isReferenceStyleMode(params.mode);
+  const ratioLocked = !isAlibaba && isRatioLockedToAdaptive(params);
+  const durationLocked = !isAlibaba && isDurationLockedToSmart(params);
   const showReferenceSlot =
     isReferenceMode && (!isAlibaba || happyHorseMode !== "t2v");
   const showExternalReferenceSlot = showReferenceSlot && params.urlAssetAttach;
@@ -1200,25 +1232,19 @@ export default function GenerateView() {
     : currentModel.happyHorseMode === "i2v"
       ? "Image-to-video"
       : "Reference-to-video"
-    : params.mode === "text"
-    ? "Text"
-    : params.mode === "reference"
-    ? "Reference"
-    : "Keyframe";
+    : BYTEPLUS_MODE_LABELS[params.mode].full;
   const composerModeButtonLabel = isAlibaba
     ? composerModeLabel
-    : params.mode === "text"
-    ? "Text"
-    : params.mode === "first_last_frame"
-    ? "Start/End"
-    : "Reference";
+    : BYTEPLUS_MODE_LABELS[params.mode].chip;
   const composerModelLabel = isAlibaba
     ? "HAPPYHORSE"
     : currentModel.name.toUpperCase();
   const summaryDurationLabel =
-    params.durationType === "seconds" ? `${params.duration}초` : "SMART";
+    params.durationType === "seconds" && !durationLocked
+      ? `${params.duration}초`
+      : "SMART";
   const composerRatioLabel = canAdjustRatio
-    ? params.ratio === "adaptive"
+    ? params.ratio === "adaptive" || ratioLocked
       ? "AUTO"
       : params.ratio
     : "SOURCE";
@@ -1232,7 +1258,8 @@ export default function GenerateView() {
   ];
   const canUseSmartDuration = supportsSmartDuration(params.modelId);
   const durationMin = minDurationForModel(params.modelId);
-  const durationProgress = rangeProgress(params.duration, durationMin, 15);
+  const durationMax = maxDurationForModel(params.modelId);
+  const durationProgress = rangeProgress(params.duration, durationMin, durationMax);
   const referenceFileAccept = isAlibaba
     ? "image/jpeg,image/jpg,image/png,image/bmp,image/webp"
     : "image/*,video/*,audio/*";
@@ -1246,14 +1273,14 @@ export default function GenerateView() {
   }, [activeQuickPanel, canAdjustRatio]);
 
   const cycleAspectRatio = useCallback(() => {
-    if (!canAdjustRatio || visibleRatios.length <= 1) return;
+    if (!canAdjustRatio || ratioLocked || visibleRatios.length <= 1) return;
     const currentIndex = Math.max(
       0,
       visibleRatios.findIndex((ratio) => ratio.value === selectedRatio.value)
     );
     const nextIndex = (currentIndex + 1) % visibleRatios.length;
     setParams({ ratio: visibleRatios[nextIndex].value });
-  }, [canAdjustRatio, selectedRatio.value, setParams, visibleRatios]);
+  }, [canAdjustRatio, ratioLocked, selectedRatio.value, setParams, visibleRatios]);
 
   const cycleResolution = useCallback(() => {
     if (availableResolutions.length <= 1) return;
@@ -1511,6 +1538,32 @@ export default function GenerateView() {
   const hasLastFrame = activeReferences.some((r) => r.role === "last_frame");
   const lastOnlyError = isFirstLastMode && hasLastFrame && !hasFirstFrame;
   const noFramesError = isFirstLastMode && !hasFirstFrame && !hasLastFrame;
+  const videoRefRequiredError =
+    !isAlibaba &&
+    (params.mode === "video_edit" || params.mode === "video_extend") &&
+    !hasVideoRef;
+  const referenceLimits = !isAlibaba
+    ? referenceLimitsForModel(params.modelId)
+    : null;
+  const videoRefCount = activeReferences.filter((r) => r.type === "video").length;
+  const audioRefCount = activeReferences.filter((r) => r.type === "audio").length;
+  const referenceLimitError =
+    referenceLimits && isReferenceMode
+      ? imageRefs.length > referenceLimits.images
+        ? `${currentModel.name}은 레퍼런스 이미지를 최대 ${referenceLimits.images}개까지 지원합니다.`
+        : videoRefCount > referenceLimits.videos
+        ? `${currentModel.name}은 레퍼런스 비디오를 최대 ${referenceLimits.videos}개까지 지원합니다.`
+        : audioRefCount > referenceLimits.audios
+        ? `${currentModel.name}은 레퍼런스 오디오를 최대 ${referenceLimits.audios}개까지 지원합니다.`
+        : ""
+      : "";
+  const audioOnlyRefError =
+    !isAlibaba &&
+    isReferenceMode &&
+    audioRefCount > 0 &&
+    imageRefs.length === 0 &&
+    videoRefCount === 0 &&
+    !supportsAudioOnlyReference(params.modelId);
   const happyHorseI2vError =
     happyHorseMode === "i2v" &&
     (imageRefs.length !== 1 || unsupportedHappyHorseRefs.length > 0);
@@ -1535,6 +1588,12 @@ export default function GenerateView() {
     ? "Start frame 이미지를 첨부하세요. (End frame만으로는 생성 불가)"
     : noFramesError && !isAlibaba
     ? "Start frame 이미지를 먼저 첨부하세요."
+    : videoRefRequiredError
+    ? `${BYTEPLUS_MODE_LABELS[params.mode].full} 모드는 비디오 레퍼런스가 최소 1개 필요합니다.`
+    : referenceLimitError
+    ? referenceLimitError
+    : audioOnlyRefError
+    ? `${currentModel.name}은 오디오 단독 레퍼런스를 지원하지 않습니다. 이미지 또는 비디오를 함께 첨부하세요. (오디오 단독은 Seedance 2.5부터 지원)`
     : uploadPending
     ? "파일 업로드가 끝난 뒤 생성할 수 있습니다."
     : happyHorseI2vError
@@ -2288,25 +2347,15 @@ export default function GenerateView() {
                         : undefined
                     }
                     placeholder={
-                      isExpanded
-                        ? isAlibaba
+                      isAlibaba
+                        ? isExpanded
                           ? currentModel.happyHorseMode === "r2v"
                             ? "Describe the scene with attached character references..."
                             : currentModel.happyHorseMode === "i2v"
                             ? "Describe motion from the attached image..."
                             : "Describe the video you want to create..."
-                          : params.mode === "text"
-                          ? "Describe the video you want to create..."
-                          : params.mode === "first_last_frame"
-                          ? "Describe camera or action in the scene..."
-                          : "Describe your scene with visual references..."
-                        : isAlibaba
-                        ? "Describe the video..."
-                        : params.mode === "text"
-                        ? "Describe the video you want to create..."
-                        : params.mode === "first_last_frame"
-                        ? "Describe camera or action in the scene..."
-                        : "Describe your scene with visual references..."
+                          : "Describe the video..."
+                        : BYTEPLUS_MODE_PLACEHOLDERS[params.mode]
                     }
                   />
                 </div>
@@ -2355,7 +2404,7 @@ export default function GenerateView() {
                           }`}
                           title={
                             canToggleComposerMode
-                              ? "Reference / Start-End Frame 전환"
+                              ? "Text / Reference / Edit / Extend / Start-End 전환"
                               : composerModeLabel
                           }
                         >
@@ -2568,17 +2617,30 @@ export default function GenerateView() {
                           >
                             {visibleRatios.map((ratio) => {
                               const active = params.ratio === ratio.value;
+                              const disabled =
+                                ratioLocked && ratio.value !== "adaptive";
                               return (
                                 <button
                                   key={ratio.value}
                                   type="button"
                                   role="option"
                                   aria-selected={active}
-                                  onClick={() =>
-                                    setParams({ ratio: ratio.value })
+                                  disabled={disabled}
+                                  onClick={() => {
+                                    if (!disabled)
+                                      setParams({ ratio: ratio.value });
+                                  }}
+                                  title={
+                                    disabled
+                                      ? "이 모드에서는 소스 비율(Auto)만 지원합니다."
+                                      : undefined
                                   }
                                   className={`ratio-chip ${
                                     active ? "ratio-chip-active" : ""
+                                  } ${
+                                    disabled
+                                      ? "cursor-not-allowed opacity-40"
+                                      : ""
                                   }`}
                                 >
                                   {ratioLabel(ratio.value, ratio.label)}
@@ -2586,6 +2648,12 @@ export default function GenerateView() {
                               );
                             })}
                           </div>
+                          {ratioLocked && (
+                            <p className="mt-2 text-[11px] text-gray-400">
+                              편집·확장·키프레임 작업은 소스 비율을 따릅니다
+                              (adaptive 고정).
+                            </p>
+                          )}
                         </div>
                       </section>
                     ) : activeQuickPanel === "resolution" ? (
@@ -2638,10 +2706,12 @@ export default function GenerateView() {
                           <input
                             type="range"
                             min={durationMin}
-                            max={15}
+                            max={durationMax}
                             step={1}
                             value={params.duration}
-                            disabled={params.durationType === "smart"}
+                            disabled={
+                              params.durationType === "smart" || durationLocked
+                            }
                             onChange={(event) =>
                               setParams({
                                 duration: Number(event.target.value),
@@ -2685,18 +2755,20 @@ export default function GenerateView() {
                                       : "smart",
                                 })
                               }
-                              disabled={!canUseSmartDuration}
+                              disabled={!canUseSmartDuration || durationLocked}
                               className={`duration-auto-button rounded-lg px-3 py-1.5 text-xs font-bold tracking-[0.08em] transition-all ${
                                 params.durationType === "smart"
                                   ? "duration-auto-button-active"
                                   : ""
                               } ${
-                                !canUseSmartDuration
+                                !canUseSmartDuration || durationLocked
                                   ? "cursor-not-allowed opacity-40"
                                   : ""
                               }`}
                               title={
-                                canUseSmartDuration
+                                durationLocked
+                                  ? "Video Edit 작업은 원본 길이를 따릅니다 (duration: -1 고정)."
+                                  : canUseSmartDuration
                                   ? "Smart length"
                                   : "현재 모델에서는 Smart length를 지원하지 않습니다."
                               }
@@ -2705,6 +2777,12 @@ export default function GenerateView() {
                             </button>
                           </div>
                         </div>
+                        {durationLocked && (
+                          <p className="mt-2 text-[11px] text-gray-400">
+                            Video Edit는 출력 길이가 원본 비디오와 동일하게
+                            유지됩니다.
+                          </p>
+                        )}
                       </section>
                     )}
                   </div>

@@ -416,6 +416,10 @@ function InlineTaskDetails({
       ? "Text"
       : task.params.mode === "first_last_frame"
       ? "Start/End"
+      : task.params.mode === "video_edit"
+      ? "Edit"
+      : task.params.mode === "video_extend"
+      ? "Extend"
       : "Reference";
   const summaryItems = [
     task.actualResolution || task.params.resolution,

@@ -17,13 +17,30 @@ import {
   formatKrw,
   getModelOption,
   isAlibabaModel,
+  isDurationLockedToSmart,
+  isRatioLockedToAdaptive,
+  maxDurationForModel,
   minDurationForModel,
   supportsAspectRatio,
+  supportsMovFormat,
   supportsSmartDuration,
   usdToKrw,
   type AspectRatio,
+  type GenerationMode,
   type ModelId,
 } from "@/lib/types";
+
+const BYTEPLUS_MODE_OPTIONS: {
+  value: GenerationMode;
+  label: string;
+  shortLabel: string;
+}[] = [
+  { value: "text", label: "Text", shortLabel: "Text" },
+  { value: "reference", label: "Reference", shortLabel: "Reference" },
+  { value: "video_edit", label: "Video Edit", shortLabel: "Video Edit" },
+  { value: "video_extend", label: "Video Extend", shortLabel: "Extend" },
+  { value: "first_last_frame", label: "Start/End Frame", shortLabel: "Keyframe" },
+];
 
 function Toggle({
   checked,
@@ -103,10 +120,14 @@ export default function ModelParams({
   const currentModel = getModelOption(params.modelId);
   const isAlibaba = isAlibabaModel(params.modelId);
   const durationMin = minDurationForModel(params.modelId);
-  const durationProgress = rangeProgress(params.duration, durationMin, 15);
+  const durationMax = maxDurationForModel(params.modelId);
+  const durationProgress = rangeProgress(params.duration, durationMin, durationMax);
   const outputProgress = rangeProgress(params.outputCount, 1, 4);
   const timeoutProgress = rangeProgress(params.generationTimeout, 1, 72);
   const canUseSmartDuration = supportsSmartDuration(params.modelId);
+  const canUseMov = supportsMovFormat(params.modelId);
+  const ratioLocked = isRatioLockedToAdaptive(params);
+  const durationLocked = isDurationLockedToSmart(params);
   const visibleRatios = ASPECT_RATIOS.filter((r) =>
     supportsAspectRatio(params.modelId, r.value)
   );
@@ -132,8 +153,12 @@ export default function ModelParams({
       durationType: supportsSmartDuration(modelId)
         ? params.durationType
         : "seconds",
-      duration: Math.max(params.duration, minDurationForModel(modelId)),
+      duration: Math.min(
+        maxDurationForModel(modelId),
+        Math.max(params.duration, minDurationForModel(modelId))
+      ),
       mode: model.provider === "alibaba" ? "reference" : params.mode,
+      videoFormat: supportsMovFormat(modelId) ? params.videoFormat : "mp4",
     });
   };
 
@@ -154,14 +179,30 @@ export default function ModelParams({
     if (params.duration < durationMin) {
       next.duration = durationMin;
     }
+    if (params.duration > durationMax) {
+      next.duration = durationMax;
+    }
     if (isAlibaba && params.mode !== "reference") {
       next.mode = "reference";
     }
+    if (!canUseMov && params.videoFormat === "mov") {
+      next.videoFormat = "mp4";
+    }
+    // Seedance 2.5 task-type constraints (see BytePlus docs).
+    if (ratioLocked && params.ratio !== "adaptive") {
+      next.ratio = "adaptive";
+    }
+    if (durationLocked && params.durationType !== "smart") {
+      next.durationType = "smart";
+    }
     if (Object.keys(next).length > 0) setParams(next);
   }, [
+    canUseMov,
     canUseSmartDuration,
     currentModel.supports1080p,
     currentModel.supports480p,
+    durationLocked,
+    durationMax,
     durationMin,
     isAlibaba,
     params.duration,
@@ -170,6 +211,8 @@ export default function ModelParams({
     params.modelId,
     params.ratio,
     params.resolution,
+    params.videoFormat,
+    ratioLocked,
     setParams,
   ]);
 
@@ -190,7 +233,7 @@ export default function ModelParams({
   useEffect(() => {
     if (!isAlibaba) return;
     setParams({
-      modelId: "dreamina-seedance-2-0-260128",
+      modelId: "dreamina-seedance-2-5-260628",
       mode: "reference",
     });
   }, [isAlibaba, setParams]);
@@ -247,32 +290,17 @@ export default function ModelParams({
         }`}>
           {!isAlibaba ? (
             <div className="grid grid-cols-3 gap-2">
-              <button
-                onClick={() => setParams({ mode: "text" })}
-                className={`settings-mode-tab ${
-                  params.mode === "text" ? "settings-mode-tab-active" : ""
-                }`}
-              >
-                Text
-              </button>
-              <button
-                onClick={() => setParams({ mode: "reference" })}
-                className={`settings-mode-tab ${
-                  params.mode === "reference" ? "settings-mode-tab-active" : ""
-                }`}
-              >
-                Reference
-              </button>
-              <button
-                onClick={() => setParams({ mode: "first_last_frame" })}
-                className={`settings-mode-tab ${
-                  params.mode === "first_last_frame"
-                    ? "settings-mode-tab-active"
-                    : ""
-                }`}
-              >
-                Keyframe
-              </button>
+              {BYTEPLUS_MODE_OPTIONS.map((mode) => (
+                <button
+                  key={mode.value}
+                  onClick={() => setParams({ mode: mode.value })}
+                  className={`settings-mode-tab ${
+                    params.mode === mode.value ? "settings-mode-tab-active" : ""
+                  }`}
+                >
+                  {mode.shortLabel}
+                </button>
+              ))}
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-2">
@@ -413,37 +441,27 @@ export default function ModelParams({
             Mode
           </label>
           <div className="param-segmented grid grid-cols-3 gap-1 bg-surface-100 rounded-xl p-1">
-            <button
-              onClick={() => setParams({ mode: "text" })}
-              className={`param-option py-2 rounded-lg text-xs font-medium transition-all ${
-                params.mode === "text"
-                  ? "param-choice-selected text-gray-800"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              Text
-            </button>
-            <button
-              onClick={() => setParams({ mode: "reference" })}
-              className={`param-option py-2 rounded-lg text-xs font-medium transition-all ${
-                params.mode === "reference"
-                  ? "param-choice-selected text-gray-800"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              Reference
-            </button>
-            <button
-              onClick={() => setParams({ mode: "first_last_frame" })}
-              className={`param-option py-2 rounded-lg text-xs font-medium transition-all ${
-                params.mode === "first_last_frame"
-                  ? "param-choice-selected text-gray-800"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              Start/End Frame
-            </button>
+            {BYTEPLUS_MODE_OPTIONS.map((mode) => (
+              <button
+                key={mode.value}
+                onClick={() => setParams({ mode: mode.value })}
+                className={`param-option py-2 rounded-lg text-[11px] font-medium transition-all ${
+                  params.mode === mode.value
+                    ? "param-choice-selected text-gray-800"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {mode.shortLabel}
+              </button>
+            ))}
           </div>
+          {(params.mode === "video_edit" || params.mode === "video_extend") && (
+            <p className="mt-2 text-[11px] text-gray-400">
+              {params.mode === "video_edit"
+                ? "편집할 비디오를 첨부하고 프롬프트에 편집 지시(add/remove/replace 등)를 포함하세요. 출력은 원본 비율·길이를 유지합니다."
+                : "확장할 비디오를 첨부하고 프롬프트에 extend/continue 지시를 포함하세요. 출력은 원본 비율을 유지합니다."}
+            </p>
+          )}
         </section>
         ) : !isDialog ? (
           <section>
@@ -507,20 +525,37 @@ export default function ModelParams({
             >
               {visibleRatios.map((r) => {
                 const active = params.ratio === r.value;
+                const disabled = ratioLocked && r.value !== "adaptive";
                 return (
                   <button
                     key={r.value}
                     type="button"
                     role="option"
                     aria-selected={active}
-                    onClick={() => setParams({ ratio: r.value })}
-                    className={`ratio-chip ${active ? "ratio-chip-active" : ""}`}
+                    disabled={disabled}
+                    onClick={() => {
+                      if (!disabled) setParams({ ratio: r.value });
+                    }}
+                    title={
+                      disabled
+                        ? "이 모드에서는 소스 비율(Auto)만 지원합니다."
+                        : undefined
+                    }
+                    className={`ratio-chip ${active ? "ratio-chip-active" : ""} ${
+                      disabled ? "cursor-not-allowed opacity-40" : ""
+                    }`}
                   >
                     {ratioLabel(r.value, r.label)}
                   </button>
                 );
               })}
             </div>
+            {ratioLocked && (
+              <p className="mt-2 text-[11px] text-gray-400">
+                Seedance 2.5의 편집·확장·키프레임 작업은 소스 비율을 그대로
+                따릅니다 (ratio: adaptive 고정).
+              </p>
+            )}
           </div>
         </section>
         )}
@@ -565,10 +600,10 @@ export default function ModelParams({
             <input
               type="range"
               min={durationMin}
-              max={15}
+              max={durationMax}
               step={1}
               value={params.duration}
-              disabled={params.durationType === "smart"}
+              disabled={params.durationType === "smart" || durationLocked}
               onChange={(e) =>
                 setParams({
                   duration: Number(e.target.value),
@@ -608,18 +643,20 @@ export default function ModelParams({
                       params.durationType === "smart" ? "seconds" : "smart",
                   })
                 }
-                disabled={!canUseSmartDuration}
+                disabled={!canUseSmartDuration || durationLocked}
                 className={`duration-auto-button rounded-lg px-3 py-1.5 text-xs font-bold tracking-[0.08em] transition-all ${
                   params.durationType === "smart"
                     ? "duration-auto-button-active"
                     : ""
                 } ${
-                  !canUseSmartDuration
+                  !canUseSmartDuration || durationLocked
                     ? "cursor-not-allowed opacity-40"
                     : ""
                 }`}
                 title={
-                  canUseSmartDuration
+                  durationLocked
+                    ? "Video Edit 작업은 원본 길이를 따릅니다 (duration: -1 고정)."
+                    : canUseSmartDuration
                     ? "Smart length"
                     : "현재 모델에서는 Smart length를 지원하지 않습니다."
                 }
@@ -628,7 +665,50 @@ export default function ModelParams({
               </button>
             </div>
           </div>
+          {durationLocked && (
+            <p className="mt-2 text-[11px] text-gray-400">
+              Seedance 2.5 Video Edit는 출력 길이가 원본 비디오와 동일하게
+              유지됩니다 (duration: -1 고정).
+            </p>
+          )}
         </section>
+
+        {/* Video Format */}
+        {!isAlibaba && (
+        <section>
+          <label className="block text-xs font-medium text-gray-500 mb-2">
+            Video Format
+          </label>
+          <div className="param-segmented grid grid-cols-2 gap-1 bg-surface-100 rounded-xl p-1">
+            {(["mp4", "mov"] as const).map((format) => {
+              const disabled = format === "mov" && !canUseMov;
+              return (
+                <button
+                  key={format}
+                  onClick={() => {
+                    if (!disabled) setParams({ videoFormat: format });
+                  }}
+                  disabled={disabled}
+                  title={
+                    disabled
+                      ? "MOV 출력은 Seedance 2.5에서만 지원합니다."
+                      : format === "mov"
+                      ? "H.264 + yuv444p + PCM. 색 재현이 중요한 편집/합성용."
+                      : "호환성이 가장 좋은 기본 포맷"
+                  }
+                  className={`param-option relative py-2 rounded-lg text-xs font-medium uppercase transition-all ${
+                    params.videoFormat === format
+                      ? "param-choice-selected text-gray-800"
+                      : "text-gray-500 hover:text-gray-700"
+                  } ${disabled ? "opacity-40 cursor-not-allowed hover:text-gray-500" : ""}`}
+                >
+                  {format}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+        )}
 
         {/* Output Count */}
         <section>

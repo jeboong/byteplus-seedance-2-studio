@@ -28,20 +28,28 @@ export function getRefTags(refs: ReferenceAsset[]): Record<string, string> {
 }
 
 /**
- * Expand UI-friendly tags (@img1) into BytePlus official natural-language
- * reference format ([Image 1]).
- *
- * Per the BytePlus Seedance 2.0 docs, the recommended pattern for
- * multi-image reference prompts is "[Image 1]xxx, [Image 2]xxx" because it
- * gives stronger instruction adherence than bare "Image 1".
+ * How UI tags are expanded into the official prompt reference format:
+ * - "bracket" — "[Image 1]" style, recommended by the Seedance 2.0 docs for
+ *   stronger instruction adherence than bare "Image 1".
+ * - "at" — "@Image1" style, the official Seedance 2.5 prompt-rule format
+ *   ("Use @Image 1, @Video 1, and @Audio 1 to refer to reference assets").
+ */
+export type RefTagStyle = "bracket" | "at";
+
+/**
+ * Expand UI-friendly tags (@img1) into the provider's official
+ * natural-language reference format.
  *
  * @example
  *   expandPromptTags("Boy from @img1 hugs corgi from @img2")
  *   // → "Boy from [Image 1] hugs corgi from [Image 2]"
+ *   expandPromptTags("Boy from @img1", refs, "at")
+ *   // → "Boy from @Image1"
  */
 export function expandPromptTags(
   prompt: string,
-  activeRefs?: ReferenceAsset[]
+  activeRefs?: ReferenceAsset[],
+  style: RefTagStyle = "bracket"
 ): string {
   const allowedTags = activeRefs
     ? new Set(
@@ -66,7 +74,7 @@ export function expandPromptTags(
         : lc === "vid" || lc === "video"
         ? "Video"
         : "Audio";
-      return `[${word} ${n}]`;
+      return style === "at" ? `@${word}${n}` : `[${word} ${n}]`;
     }
   );
 }

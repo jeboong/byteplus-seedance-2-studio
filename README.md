@@ -1,6 +1,6 @@
-# BytePlus Seedance 2.0 Studio
+# BytePlus Seedance 2.5 / 2.0 Studio
 
-개발용 비공식 영상 생성 클라이언트입니다. Next.js App Router 기반으로 BytePlus ModelArk Seedance 2.0 API와 Alibaba ModelStudio HappyHorse API를 같은 UI에서 호출합니다.
+개발용 비공식 영상 생성 클라이언트입니다. Next.js App Router 기반으로 BytePlus ModelArk Seedance 2.5 / 2.0 API와 Alibaba ModelStudio HappyHorse API를 같은 UI에서 호출합니다.
 
 원본 [`jeboong/seedance-2-studio`](https://github.com/jeboong/seedance-2-studio)를 BytePlus ModelArk 중심으로 포팅한 뒤, HappyHorse 모델과 현재 컴포저 UX를 추가한 버전입니다. 프로덕션 서비스로 바로 쓰기보다는 API 테스트, 데모, 내부 운영 도구 용도로 사용하는 것을 권장합니다.
 
@@ -11,24 +11,50 @@
 ### 영상 생성
 
 - **BytePlus ModelArk**
+  - Seedance 2.5: `dreamina-seedance-2-5-260628` (기본 모델)
   - Seedance 2.0: `dreamina-seedance-2-0-260128`
   - Seedance 2.0 Fast: `dreamina-seedance-2-0-fast-260128`
 - **Alibaba ModelStudio**
   - HappyHorse 1.0 Text-to-video: `happyhorse-1.0-t2v`
   - HappyHorse 1.0 Image-to-video: `happyhorse-1.0-i2v`
   - HappyHorse 1.0 Reference-to-video: `happyhorse-1.0-r2v`
-- **BytePlus 모드**: Text / Reference / First & Last Frame
+- **BytePlus 모드**: Text / Reference / Video Edit / Video Extend / First & Last Frame
 - **HappyHorse 모드**: T2V / I2V / R2V 모델별 전용 입력 흐름
 - **해상도**: 480p / 720p / 1080p
+  - Seedance 2.5는 480p / 720p만 지원 (1080p/4K 미지원)
   - Seedance 2.0 Fast는 1080p 미지원
   - HappyHorse는 720P / 1080P만 사용
 - **종횡비**
   - BytePlus: Adaptive / 21:9 / 16:9 / 4:3 / 1:1 / 3:4 / 9:16
   - HappyHorse: 16:9 / 9:16 / 1:1 / 4:3 / 3:4
 - **길이**
-  - BytePlus: 4-15초 또는 Smart Length
+  - Seedance 2.5: 4-30초 또는 Smart Length
+  - Seedance 2.0 / 2.0 Fast: 4-15초 또는 Smart Length
   - HappyHorse: 3-15초
+- **출력 포맷**: MP4 / MOV (MOV는 Seedance 2.5 전용, H.264 + yuv444p + PCM)
 - **추가 옵션**: 출력 개수, 사운드 생성(BytePlus), 워터마크, Last Frame 반환(BytePlus), Seed 고정, 생성 타임아웃
+
+### Seedance 2.5 작업 유형 제약 (공식 docs 기준)
+
+앱이 아래 제약을 UI와 요청 페이로드에서 자동으로 강제합니다. 위반 시 BytePlus가
+`InvalidParameter.TaskTypeConstraint` 비동기 오류를 반환하기 때문입니다.
+
+| 작업 유형 | ratio | duration | 비고 |
+|---|---|---|---|
+| Video Edit | `adaptive` 고정 | `-1` 고정 | 출력이 원본 비디오의 비율·길이를 유지. 프롬프트에 edit/add/remove/replace 류 트리거 키워드 필요 |
+| Video Extend | `adaptive` 고정 | 4-30초 또는 `-1` | 출력이 원본 비디오의 비율을 유지. 프롬프트에 extend/continue 류 트리거 키워드 필요 |
+| First & Last Frame | `adaptive` 고정 | 4-30초 또는 `-1` | 출력이 첫 프레임 이미지의 비율을 유지 |
+| Text / Reference | 자유 | 4-30초 또는 `-1` | 제약 없음 |
+
+### 레퍼런스 첨부 한도
+
+| 모델 | 이미지 | 비디오 | 오디오 | 오디오 단독 |
+|---|---|---|---|---|
+| Seedance 2.5 | 30 | 10 | 10 | 가능 |
+| Seedance 2.0 / Fast | 9 | 3 | 3 | 불가 (이미지/비디오 필요) |
+
+Seedance 2.5의 레퍼런스 비디오/오디오는 클립당 2-30초, 전체 합산 30초 이하가 공식 제한입니다
+(클립 길이 검증은 서버 응답에 위임).
 
 ### 입력과 첨부
 

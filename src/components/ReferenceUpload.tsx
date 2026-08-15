@@ -27,6 +27,8 @@ import {
   getGenerationReferences,
   getModelOption,
   isAlibabaModel,
+  isReferenceStyleMode,
+  referenceLimitsForModel,
   type ReferenceAsset,
 } from "@/lib/types";
 import {
@@ -1130,13 +1132,16 @@ export default function ReferenceUpload() {
     () => getGenerationReferences(params, references),
     [params, references]
   );
+  const byteplusLimits = referenceLimitsForModel(params.modelId);
   const maxRefs = isAlibaba
     ? currentModel.happyHorseMode === "i2v"
       ? 1
       : currentModel.happyHorseMode === "r2v"
       ? 9
       : 0
-    : 12;
+    : byteplusLimits
+    ? byteplusLimits.images + byteplusLimits.videos + byteplusLimits.audios
+    : 15;
 
   return (
     <div className="space-y-2">
@@ -1150,7 +1155,7 @@ export default function ReferenceUpload() {
             ? "Start & End Frame"
             : "이미지 / 비디오 / 오디오"}
         </span>
-        {params.mode === "reference" && maxRefs > 0 && (
+        {isReferenceStyleMode(params.mode) && maxRefs > 0 && (
           <span>({visibleReferences.length}/{maxRefs})</span>
         )}
         {isAlibaba && (

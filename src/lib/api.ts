@@ -2,6 +2,12 @@ import {
   getModelOption,
   getGenerationReferences,
   isAlibabaModel,
+  isDurationLockedToSmart,
+  isRatioLockedToAdaptive,
+  isSeedance25Model,
+  maxDurationForModel,
+  minDurationForModel,
+  supportsMovFormat,
   type ModelId,
   type ModelParams,
   type ReferenceAsset,
@@ -161,12 +167,18 @@ export function buildPayload(
     return buildHappyHorsePayload(prompt, references, params);
   }
 
-  // BytePlus recommends "[Image 1]xxx, [Image 2]xxx" natural-language refs.
-  // We let users author with friendly @img1 / @vid1 / @aud1 tags in the UI
-  // and expand them here just before sending the request.
+  // Users author with friendly @img1 / @vid1 / @aud1 tags in the UI and we
+  // expand them just before sending: Seedance 2.5 prompt rules use @Image1 /
+  // @Video1 style, while the 2.0 docs recommend "[Image 1]" bracket refs.
   const activeReferences = getGenerationReferences(params, references);
   const expandedPrompt =
-    params.mode === "text" ? prompt : expandPromptTags(prompt, activeReferences);
+    params.mode === "text"
+      ? prompt
+      : expandPromptTags(
+          prompt,
+          activeReferences,
+          isSeedance25Model(params.modelId) ? "at" : "bracket"
+        );
 
   const content: Record<string, unknown>[] = [
     { type: "text", text: expandedPrompt },
@@ -202,22 +214,38 @@ export function buildPayload(
     }
   }
 
+  // Seedance 2.5 task-type constraints (video edit / extend / keyframe):
+  // ratio must be "adaptive" and video-edit duration must be -1, otherwise
+  // the task fails asynchronously with InvalidParameter.TaskTypeConstraint.
+  const ratio = isRatioLockedToAdaptive(params) ? "adaptive" : params.ratio;
+  const smartDuration =
+    params.durationType === "smart" || isDurationLockedToSmart(params);
+  const duration = smartDuration
+    ? -1
+    : Math.min(
+        maxDurationForModel(params.modelId),
+        Math.max(minDurationForModel(params.modelId), params.duration)
+      );
+
   const body: Record<string, unknown> = {
     model: params.modelId,
     content,
     generate_audio: params.generateAudio,
     watermark: params.watermark,
-    ratio: params.ratio,
+    ratio,
+    duration,
   };
-
-  if (params.durationType === "seconds") {
-    body.duration = params.duration;
-  } else {
-    body.duration = -1;
-  }
 
   if (params.resolution) {
     body.resolution = params.resolution;
+  }
+
+  // output_format (mp4 | mov) is a Seedance 2.5+ parameter.
+  if (isSeedance25Model(params.modelId)) {
+    body.output_format =
+      params.videoFormat === "mov" && supportsMovFormat(params.modelId)
+        ? "mov"
+        : "mp4";
   }
 
   if (params.seed && params.seed.trim() !== "") {
