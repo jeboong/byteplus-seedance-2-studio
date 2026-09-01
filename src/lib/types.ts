@@ -72,8 +72,8 @@ export const MODELS: ModelOption[] = [
     name: "Seedance 2.5",
     provider: "byteplus",
     versionLabel: "260628",
-    // Per the official docs, Seedance 2.5 outputs 480p/720p only (no 1080p/4K).
-    supports1080p: false,
+    // Seedance 2.5 now outputs up to 1080p (4K still unsupported).
+    supports1080p: true,
     supports480p: true,
     maxDuration: 30,
     supportsMov: true,

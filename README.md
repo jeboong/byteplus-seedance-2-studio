@@ -21,7 +21,7 @@
 - **BytePlus 모드**: Text / Reference / Video Edit / Video Extend / First & Last Frame
 - **HappyHorse 모드**: T2V / I2V / R2V 모델별 전용 입력 흐름
 - **해상도**: 480p / 720p / 1080p
-  - Seedance 2.5는 480p / 720p만 지원 (1080p/4K 미지원)
+  - Seedance 2.5는 480p / 720p / 1080p 지원 (4K 미지원)
   - Seedance 2.0 Fast는 1080p 미지원
   - HappyHorse는 720P / 1080P만 사용
 - **종횡비**
